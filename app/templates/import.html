@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card form-card">
+    <h1>Import VCF</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <label>
+        Address book
+        <select name="collection_path" required>
+          <option value="">Select address book</option>
+          {% for book in books %}
+            <option value="{{ book.path }}" {% if selected_path == book.path %}selected{% endif %}>{{ book.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        VCF file
+        <input type="file" name="vcf_file" accept=".vcf" required />
+      </label>
+
+      <div class="button-row">
+        <button type="submit">Import</button>
+      </div>
+    </form>
+
+    {% if results %}
+      <div class="result-block">
+        <h2>Import Results</h2>
+        <dl>
+          <dt>Processed</dt><dd>{{ results.processed }}</dd>
+          <dt>Created</dt><dd>{{ results.created }}</dd>
+          <dt>Updated</dt><dd>{{ results.updated }}</dd>
+          <dt>Failed</dt><dd>{{ results.failed|length }}</dd>
+        </dl>
+        {% if results.failed %}
+          <ul class="failure-list">
+            {% for fail in results.failed %}
+              <li>{{ fail.error }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

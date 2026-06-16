@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head><title>Radicale Contact Uploader</title></head>
+<body>
+  <h1>Upload Contacts to Radicale</h1>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul style="color: red;">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+  <form method="POST" enctype="multipart/form-data">
+    <label>Radicale URL: <input name="server_url" value="https://radicle.murrey.io"></label><br>
+    <label>Collection Path: <input name="collection_path" value="Matthew/your-book"></label><br>
+    <label>Username: <input name="username"></label><br>
+    <label>Password: <input name="password" type="password"></label><br>
+    <label>VCF File: <input type="file" name="vcf_file" accept=".vcf"></label><br><br>
+    <input type="submit" value="Upload">
+  </form>
+</body>
+</html>

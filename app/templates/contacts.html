@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Contacts in {{ book.name }}</h1>
+    <p class="muted">{{ book.path }}</p>
+    {% if contacts %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Full Name</th>
+            <th>Organization</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for contact in contacts %}
+            <tr>
+              <td>{{ contact.full_name }}</td>
+              <td>{{ contact.organization }}</td>
+              <td>{{ contact.emails|join(', ') }}</td>
+              <td>{{ contact.phones|join(', ') }}</td>
+              <td>
+                <a class="button small" href="{{ url_for('edit_contact', collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
+                <a class="button small" href="{{ url_for('delete_contact', collection_path=book.path, contact_filename=contact.filename) }}">Delete</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No contacts found in this address book.</p>
+    {% endif %}
+  </div>
+{% endblock %}

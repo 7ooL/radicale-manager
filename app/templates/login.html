@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card form-card">
+    <h1>Connect to Radicale</h1>
+    <form method="POST">
+      <label>
+        Saved profile
+        <select name="profile_id" onchange="this.form.submit()">
+          <option value="">-- Select a profile --</option>
+          {% for profile in profiles %}
+            <option value="{{ profile.id }}" {% if profile.id|string == selected_profile_id %}selected{% endif %}>
+              {{ profile.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Server URL
+        <input type="url" name="server_url" value="{{ form.server_url }}" required />
+      </label>
+
+      <label>
+        Username
+        <input type="text" name="username" value="{{ form.username }}" required />
+      </label>
+
+      <label>
+        Password
+        <input type="password" name="password" value="{{ form.password }}" required />
+      </label>
+
+      <label>
+        Profile name
+        <input type="text" name="profile_name" value="{{ form.profile_name }}" placeholder="Optional: My home account" />
+      </label>
+
+      <label class="checkbox-label">
+        <input type="checkbox" name="save_profile" {% if form.save_profile %}checked{% endif %} /> Save this connection
+      </label>
+
+      <div class="button-row">
+        <button type="submit">Connect</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

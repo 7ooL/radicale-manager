@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card form-card">
+    <h1>Edit Contact</h1>
+    <p class="muted">{{ book.name }} / {{ contact.filename }}</p>
+    <form method="POST">
+      <label>
+        Full name
+        <input type="text" name="full_name" value="{{ fields.full_name }}" />
+      </label>
+      <label>
+        First name
+        <input type="text" name="first_name" value="{{ fields.first_name }}" />
+      </label>
+      <label>
+        Last name
+        <input type="text" name="last_name" value="{{ fields.last_name }}" />
+      </label>
+      <label>
+        Organization
+        <input type="text" name="organization" value="{{ fields.organization }}" />
+      </label>
+      <label>
+        Email addresses (comma separated)
+        <input type="text" name="emails" value="{{ fields.emails|join(', ') }}" />
+      </label>
+      <label>
+        Phone numbers (comma separated)
+        <input type="text" name="phones" value="{{ fields.phones|join(', ') }}" />
+      </label>
+      <label>
+        Notes
+        <textarea name="note">{{ fields.note }}</textarea>
+      </label>
+      <div class="button-row">
+        <button type="submit">Save</button>
+        <a class="button secondary" href="{{ url_for('view_contacts', collection_path=book.path) }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
