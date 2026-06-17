@@ -17,8 +17,20 @@
         <input type="text" name="last_name" value="{{ fields.last_name }}" />
       </label>
       <label>
+        Nickname
+        <input type="text" name="nickname" value="{{ fields.nickname }}" />
+      </label>
+      <label>
         Organization
         <input type="text" name="organization" value="{{ fields.organization }}" />
+      </label>
+      <label>
+        Job title
+        <input type="text" name="job_title" value="{{ fields.job_title }}" />
+      </label>
+      <label>
+        Birthday
+        <input type="text" name="birthday" value="{{ fields.birthday }}" placeholder="YYYY-MM-DD" />
       </label>
       <label>
         Email addresses (comma separated)
@@ -29,11 +41,29 @@
         <input type="text" name="phones" value="{{ fields.phones|join(', ') }}" />
       </label>
       <label>
+        Postal address
+        <textarea name="address">{{ fields.address }}</textarea>
+      </label>
+      <label>
+        Websites (comma separated)
+        <input type="text" name="urls" value="{{ fields.urls|join(', ') }}" />
+      </label>
+      <label>
+        Categories (comma separated)
+        <input type="text" name="categories" value="{{ fields.categories|join(', ') }}" />
+      </label>
+      <label>
         Notes
         <textarea name="note">{{ fields.note }}</textarea>
       </label>
+      <label>
+        Raw vCard
+        <textarea name="raw_vcard" class="raw-view">{{ raw_vcard }}</textarea>
+        <small>Use Save raw vCard for advanced fields not represented above.</small>
+      </label>
       <div class="button-row">
-        <button type="submit">Save</button>
+        <button type="submit" name="save_mode" value="structured">Save fields</button>
+        <button class="button secondary" type="submit" name="save_mode" value="raw">Save raw vCard</button>
         <a class="button secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Cancel</a>
       </div>
     </form>

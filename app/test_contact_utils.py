@@ -2,6 +2,7 @@ import unittest
 import vobject
 
 from app.contact_utils import (
+    build_vcard_from_fields,
     extract_address,
     extract_emails,
     extract_note,
@@ -83,6 +84,41 @@ class ContactUtilsTest(unittest.TestCase):
         self.assertEqual(card["organization"], "Acme Corp")
         self.assertEqual(card["note"], "Example note")
         self.assertEqual(card["address"], "456 Oak St, Bigcity, State, 99999, Country")
+
+    def test_build_vcard_preserves_editable_summary_fields(self):
+        vcard_text = build_vcard_from_fields(
+            {
+                "uid": "contact-1",
+                "full_name": "Taylor Example",
+                "first_name": "Taylor",
+                "last_name": "Example",
+                "nickname": "Tay",
+                "organization": "Example Co",
+                "job_title": "Director",
+                "birthday": "1990-01-02",
+                "emails": ["taylor@example.com"],
+                "phones": ["555-0100"],
+                "address": "789 Pine St",
+                "urls": ["https://example.com"],
+                "categories": ["Friends", "Work"],
+                "note": "Editable note",
+            }
+        )
+
+        result = vcard_to_dict(vcard_text)
+
+        self.assertEqual(result["uid"], "contact-1")
+        self.assertEqual(result["full_name"], "Taylor Example")
+        self.assertEqual(result["nickname"], "Tay")
+        self.assertEqual(result["organization"], "Example Co")
+        self.assertEqual(result["job_title"], "Director")
+        self.assertEqual(result["birthday"], "1990-01-02")
+        self.assertEqual(result["emails"], ["taylor@example.com"])
+        self.assertEqual(result["phones"], ["555-0100"])
+        self.assertEqual(result["address"], "789 Pine St")
+        self.assertEqual(result["urls"], ["https://example.com"])
+        self.assertEqual(result["categories"], ["Friends", "Work"])
+        self.assertEqual(result["note"], "Editable note")
 
 
 if __name__ == "__main__":

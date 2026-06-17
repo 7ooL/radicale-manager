@@ -175,6 +175,51 @@ def clear_active_connection():
     app.logger.debug("Cleared active connection from session")
 
 
+def normalize_book_for_template(book, fallback_path=None):
+    """Return address book data with both display_name and name keys for templates."""
+    book = dict(book or {})
+    path = book.get("path") or fallback_path
+    display_name = (
+        book.get("display_name")
+        or book.get("displayname")
+        or book.get("name")
+        or path
+    )
+    book["path"] = path
+    book["display_name"] = display_name
+    book["name"] = display_name
+    return book
+
+
+def update_cached_contact_count(profile_id, collection_path, count):
+    books = credential_store.get_cached_address_books(profile_id) or []
+    book = next((b for b in books if b["path"] == collection_path), None)
+    if not book:
+        return
+    updated = dict(book)
+    updated["contact_count"] = count
+    credential_store.save_or_update_address_books(profile_id, [updated])
+
+
+def fill_missing_contact_counts(profile_id, client, books):
+    updated_books = []
+    for book in books:
+        normalized = normalize_book_for_template(book)
+        if normalized.get("contact_count") is None and normalized.get("path"):
+            try:
+                normalized["contact_count"] = len(client.list_contacts(normalized["path"]))
+                credential_store.save_or_update_address_books(profile_id, [normalized])
+            except Exception as exc:
+                app.logger.warning(
+                    "Unable to count contacts for profile %s book %s: %s",
+                    profile_id,
+                    normalized.get("path"),
+                    exc,
+                )
+        updated_books.append(normalized)
+    return updated_books
+
+
 def make_client():
     """Build a RadicaleClient from the active session connection."""
     active = get_active_connection()
@@ -274,6 +319,8 @@ def login():
                         form["password"],
                         enabled=True,
                     )
+                    books_with_counts = fill_missing_contact_counts(profile_id, client, books)
+                    credential_store.save_or_update_address_books(profile_id, books_with_counts)
                     app.logger.warning("PROFILE CREATED id=%s", profile_id)
                     app.logger.warning(
                         "PROFILES AFTER CREATE: %s",
@@ -322,15 +369,34 @@ def connections():
 @app.route("/connections/new", methods=["GET", "POST"])
 def new_connection():
     app.logger.debug("New connection page %s", request.method)
+    form = {
+        "server_url": app.config["DEFAULT_RADICALE_URL"],
+        "username": "",
+        "password": "",
+        "profile_name": "",
+        "enabled": True,
+    }
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
+        name = (
+            request.form.get("profile_name", "").strip()
+            or request.form.get("name", "").strip()
+        )
         server_url = request.form.get("server_url", "").strip()
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         enabled = bool(request.form.get("enabled"))
+        form.update(
+            {
+                "server_url": server_url,
+                "username": username,
+                "password": password,
+                "profile_name": name,
+                "enabled": enabled,
+            }
+        )
         if not name or not server_url or not username:
             flash("Name, server URL and username are required.", "error")
-            return render_template("connections_new.html", form=request.form)
+            return render_template("connections_new.html", form=form)
         try:
             profile_id = credential_store.create_profile(name, server_url, username, password=password or None, enabled=enabled)
             flash("Connection saved.", "success")
@@ -338,8 +404,8 @@ def new_connection():
         except Exception as exc:
             app.logger.exception("Failed to create profile")
             flash(f"Failed to save connection: {exc}", "error")
-            return render_template("connections_new.html", form=request.form)
-    return render_template("connections_new.html", form={})
+            return render_template("connections_new.html", form=form)
+    return render_template("connections_new.html", form=form)
 
 
 @app.route("/system/routes")
@@ -423,6 +489,7 @@ def test_connection(profile_id):
     try:
         client = RadicaleClient(profile["server_url"], profile["username"], password)
         books = client.discover_addressbooks()
+        books = fill_missing_contact_counts(profile_id, client, books)
         credential_store.save_or_update_address_books(profile_id, books)
         credential_store.update_connection_status(profile_id, True)
         flash(f"Connection test succeeded: found {len(books)} books.", "success")
@@ -446,6 +513,7 @@ def refresh_addressbooks(profile_id):
     try:
         client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
         books = client.discover_addressbooks()
+        books = fill_missing_contact_counts(profile_id, client, books)
         credential_store.save_or_update_address_books(profile_id, books)
         credential_store.update_connection_status(profile_id, True)
         flash(f"Refreshed {len(books)} address books.", "success")
@@ -481,14 +549,10 @@ def dashboard():
     for p in profiles:
         entry = {**p}
         try:
+            full = credential_store.get_profile(p["id"]) or {}
+            p_password = full.get("password")
             books = credential_store.get_cached_address_books(p["id"]) or []
             # If no cache, try to discover now if password available
-            if not books and p.get("password") is None:
-                # load profile to get decrypted password
-                full = credential_store.get_profile(p["id"]) or {}
-                p_password = full.get("password")
-            else:
-                p_password = None
             if not books and p_password:
                 try:
                     client = RadicaleClient(p["server_url"], p["username"], p_password)
@@ -497,6 +561,11 @@ def dashboard():
                     books = credential_store.get_cached_address_books(p["id"]) or []
                 except Exception as exc:
                     app.logger.warning("Discovery for profile %s failed: %s", p.get("name"), exc)
+            if books and p_password:
+                client = RadicaleClient(p["server_url"], p["username"], p_password)
+                books = fill_missing_contact_counts(p["id"], client, books)
+            else:
+                books = [normalize_book_for_template(book) for book in books]
             entry["books"] = books
         except Exception:
             entry["books"] = []
@@ -660,7 +729,10 @@ def profile_view_contacts(profile_id, collection_path):
     try:
         # find book display name from cache
         books = credential_store.get_cached_address_books(profile_id)
-        book = next((b for b in books if b["path"] == collection_path), {"path": collection_path, "display_name": collection_path})
+        book = normalize_book_for_template(
+            next((b for b in books if b["path"] == collection_path), None),
+            fallback_path=collection_path,
+        )
         contacts = []
         for item in client.list_contacts(collection_path):
             try:
@@ -675,10 +747,11 @@ def profile_view_contacts(profile_id, collection_path):
                     exc,
                 )
                 continue
+        update_cached_contact_count(profile_id, collection_path, len(contacts))
         return render_template(
             "contacts.html",
             title=f"Contacts - {book.get('display_name')}",
-            book={"path": collection_path, "name": book.get("display_name")},
+            book=book,
             contacts=contacts,
             profile_id=profile_id,
         )
@@ -699,7 +772,10 @@ def profile_view_contact(profile_id, collection_path, contact_filename):
         return redirect(url_for("connections"))
     try:
         books = credential_store.get_cached_address_books(profile_id)
-        book = next((b for b in books if b["path"] == collection_path), {"path": collection_path, "display_name": collection_path})
+        book = normalize_book_for_template(
+            next((b for b in books if b["path"] == collection_path), None),
+            fallback_path=collection_path,
+        )
         contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
         vcard_text, etag = client.get_contact(contact_href)
         contact = parse_vcard_contact(vcard_text)
@@ -764,30 +840,58 @@ def profile_edit_contact(profile_id, collection_path, contact_filename):
         return redirect(url_for("connections"))
     contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
     try:
+        books = credential_store.get_cached_address_books(profile_id)
+        book = normalize_book_for_template(
+            next((b for b in books if b["path"] == collection_path), None),
+            fallback_path=collection_path,
+        )
         vcard_text, etag = client.get_contact(contact_href)
         fields = vcard_to_dict(vcard_text)
         if request.method == "POST":
+            if request.form.get("save_mode") == "raw":
+                raw_vcard = request.form.get("raw_vcard", "").strip()
+                if not raw_vcard:
+                    flash("Raw vCard cannot be empty.", "error")
+                    return render_template(
+                        "edit_contact.html",
+                        title="Edit Contact",
+                        book=book,
+                        contact={"filename": contact_filename},
+                        fields=fields,
+                        raw_vcard=vcard_text,
+                        profile_id=profile_id,
+                    )
+                client.put_contact(collection_path, contact_filename, raw_vcard + "\n", if_match=etag)
+                flash("Contact saved.", "success")
+                return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
             values = {
                 "uid": fields.get("uid"),
                 "full_name": request.form.get("full_name", "").strip(),
                 "first_name": request.form.get("first_name", "").strip(),
                 "last_name": request.form.get("last_name", "").strip(),
+                "nickname": request.form.get("nickname", "").strip(),
                 "organization": request.form.get("organization", "").strip(),
+                "job_title": request.form.get("job_title", "").strip(),
+                "birthday": request.form.get("birthday", "").strip(),
+                "address": request.form.get("address", "").strip(),
                 "note": request.form.get("note", "").strip(),
                 "emails": [email.strip() for email in request.form.get("emails", "").split(",") if email.strip()],
                 "phones": [phone.strip() for phone in request.form.get("phones", "").split(",") if phone.strip()],
+                "urls": [url.strip() for url in request.form.get("urls", "").split(",") if url.strip()],
+                "categories": [category.strip() for category in request.form.get("categories", "").split(",") if category.strip()],
             }
             values["uid"] = fields.get("uid") or values.get("uid")
             new_vcard = build_vcard_from_fields(values)
             client.put_contact(collection_path, contact_filename, new_vcard, if_match=etag)
             flash("Contact saved.", "success")
-            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+            return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
         return render_template(
             "edit_contact.html",
             title="Edit Contact",
-            book={"path": collection_path, "name": collection_path},
+            book=book,
             contact={"filename": contact_filename},
             fields=fields,
+            raw_vcard=vcard_text,
             profile_id=profile_id,
         )
     except Exception as exc:

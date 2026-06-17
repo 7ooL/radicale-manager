@@ -109,6 +109,10 @@ def _extract_text(prop):
 def _extract_list(card, prop_name):
     values = []
     for prop in _property_items(card, prop_name):
+        prop_value = getattr(prop, "value", None)
+        if isinstance(prop_value, (list, tuple)):
+            values.extend(str(item).strip() for item in prop_value if item)
+            continue
         text = _extract_text(prop)
         if text:
             values.append(text)
@@ -423,10 +427,15 @@ def vcard_to_dict(vcard_text):
         "full_name": "",
         "first_name": "",
         "last_name": "",
+        "nickname": "",
         "emails": [],
         "phones": [],
         "organization": "",
+        "job_title": "",
+        "birthday": "",
         "address": "",
+        "urls": [],
+        "categories": [],
         "note": "",
     }
 
@@ -439,6 +448,9 @@ def vcard_to_dict(vcard_text):
 
     item["uid"] = _extract_text(_get_property(card, "uid"))
     item["full_name"] = _extract_text(_get_property(card, "fn"))
+    item["nickname"] = _extract_text(_get_property(card, "nickname"))
+    item["job_title"] = _extract_text(_get_property(card, "title"))
+    item["birthday"] = _extract_text(_get_property(card, "bday"))
 
     # Prefer parsed N fields for first/last names and fallback full name when FN is missing.
     full_name, first_name, last_name = _extract_name(card)
@@ -449,6 +461,8 @@ def vcard_to_dict(vcard_text):
 
     item["emails"] = _extract_list(card, "email")
     item["phones"] = _extract_list(card, "tel")
+    item["urls"] = _extract_list(card, "url")
+    item["categories"] = _extract_list(card, "categories")
 
     try:
         item["address"] = extract_address(card)
@@ -482,6 +496,12 @@ def build_vcard_from_fields(values):
     if values.get("organization"):
         org = card.add("org")
         org.value = [values.get("organization")]
+    if values.get("nickname"):
+        card.add("nickname").value = values.get("nickname")
+    if values.get("job_title"):
+        card.add("title").value = values.get("job_title")
+    if values.get("birthday"):
+        card.add("bday").value = values.get("birthday")
     if values.get("note"):
         note = card.add("note")
         note.value = values.get("note")
@@ -500,7 +520,14 @@ def build_vcard_from_fields(values):
 
     if values.get("address"):
         adr = card.add("adr")
-        adr.value = ["", "", values.get("address"), "", "", "", ""]
+        adr.value = vobject.vcard.Address(street=values.get("address"))
+
+    for url in values.get("urls", []):
+        if url:
+            card.add("url").value = url
+
+    if values.get("categories"):
+        card.add("categories").value = values.get("categories")
 
     if values.get("uid"):
         uid = card.add("uid")

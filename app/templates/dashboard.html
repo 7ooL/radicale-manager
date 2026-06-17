@@ -23,7 +23,7 @@
                 <article class="book-card">
                   <h3>{{ book.display_name }}</h3>
                   <p><strong>Path</strong><br>{{ book.path }}</p>
-                  <p><strong>Contacts</strong><br>{{ book.contact_count or 'unknown' }}</p>
+                  <p><strong>Contacts</strong><br>{% if book.contact_count is not none %}{{ book.contact_count }}{% else %}unknown{% endif %}</p>
                   <div class="button-row">
                     <a class="button" href="{{ url_for('profile_view_contacts', profile_id=profile.id, collection_path=book.path) }}">View</a>
                     <a class="button" href="{{ url_for('profile_import_vcf', profile_id=profile.id, collection_path=book.path) }}">Import</a>
