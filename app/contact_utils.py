@@ -1,10 +1,14 @@
+import logging
 import re
 import uuid
 import vobject
 from vobject.base import ParseError
 
+LOGGER = logging.getLogger(__name__)
+
 
 def _split_vcards(content):
+    """Split raw VCF content into individual VCARD blocks."""
     content = content.replace("\r\n", "\n").strip()
     pattern = re.compile(r"(?ms)^BEGIN:VCARD.*?END:VCARD(?:\n|$)")
     matches = pattern.findall(content)
@@ -16,9 +20,11 @@ def _split_vcards(content):
 
 
 def parse_vcf_contacts(vcf_content):
+    """Parse VCF content into a list of contacts and capture failed entries."""
     contacts = []
     failed = []
     blocks = _split_vcards(vcf_content)
+    LOGGER.debug("Parsing VCF content into %d blocks", len(blocks))
     if not blocks:
         raise ValueError("Invalid VCF file or no contacts found.")
 
@@ -26,6 +32,7 @@ def parse_vcf_contacts(vcf_content):
         try:
             card = vobject.readOne(block)
         except Exception as exc:
+            LOGGER.warning("Failed to parse VCARD block: %s", exc)
             failed.append({"error": str(exc), "vcard": block})
             continue
 
@@ -52,11 +59,12 @@ def parse_vcf_contacts(vcf_content):
                 "display_name": display_name,
             }
         )
-
+    LOGGER.info("Parsed %d contacts with %d failures", len(contacts), len(failed))
     return contacts, failed
 
 
 def _format_name(name):
+    """Convert a parsed name object into a printable full name."""
     if not name:
         return ""
     if hasattr(name, "given") and hasattr(name, "family"):
@@ -65,6 +73,7 @@ def _format_name(name):
 
 
 def vcard_to_dict(vcard_text):
+    """Convert a raw VCard string to a dictionary of displayable fields."""
     card = vobject.readOne(vcard_text)
     item = {
         "uid": getattr(card, "uid", None).value if hasattr(card, "uid") else "",
@@ -95,6 +104,7 @@ def vcard_to_dict(vcard_text):
 
 
 def build_vcard_from_fields(values):
+    """Build a VCard string from form input values for editing or creating contacts."""
     card = vobject.vCard()
     card.add("version").value = "3.0"
     card.add("fn").value = values.get("full_name") or ""
@@ -136,6 +146,7 @@ def build_vcard_from_fields(values):
 
 
 def get_contact_filename(contact_href):
+    """Return the file name portion of a contact URL or href."""
     if not contact_href:
         return None
     return contact_href.rstrip("/").split("/")[-1]
