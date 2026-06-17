@@ -33,10 +33,11 @@
       <label>
         Profile name
         <input type="text" name="profile_name" value="{{ form.profile_name }}" placeholder="Optional: My home account" />
+        <small>If left blank, a profile name will be generated from your username and server URL when saving.</small>
       </label>
 
       <label class="checkbox-label">
-        <input type="checkbox" name="save_profile" {% if form.save_profile %}checked{% endif %} /> Save this connection
+        <input type="checkbox" name="save_profile" {% if form.save_profile %}checked{% endif %} /> Save this connection as a reusable profile
       </label>
 
       <div class="button-row">

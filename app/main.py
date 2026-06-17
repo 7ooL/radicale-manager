@@ -167,7 +167,7 @@ def login():
             app.logger.debug("Login discovery found %d books", len(books))
             if not books:
                 app.logger.warning("Login discovery succeeded but no books were found")
-                app.logger.debug(
+                    app.logger.debug(
                     "Login discovery details: server=%s username=%s selected_profile=%s no_books=True",
                     form["server_url"],
                     form["username"],
@@ -177,27 +177,30 @@ def login():
                 return render_template("login.html", title="Login", profiles=profiles, form=form)
 
             set_active_connection(form["server_url"], form["username"], form["password"])
-            if form["save_profile"] and form["profile_name"]:
+            app.logger.warning(
+                "SAVE_PROFILE=%s PROFILE_NAME='%s' DIRECT_LOGIN=%s",
+                request.form.get("save_profile"),
+                form["profile_name"],
+                not selected_profile_id,
+            )
+            if form["save_profile"]:
+                profile_name = form["profile_name"] or f"{form['username']}@{form['server_url']}"
+                app.logger.warning("ABOUT TO CREATE PROFILE")
                 try:
-                    app.logger.debug(
-                        "Creating profile name=%s server=%s username=%s",
-                        form["profile_name"],
-                        form["server_url"],
-                        form["username"],
-                    )
                     profile_id = credential_store.create_profile(
-                        form["profile_name"],
+                        profile_name,
                         form["server_url"],
                         form["username"],
                         form["password"],
                         enabled=True,
                     )
-                    app.logger.debug(
-                        "Created profile id=%s",
-                        profile_id,
+                    app.logger.warning("PROFILE CREATED id=%s", profile_id)
+                    app.logger.warning(
+                        "PROFILES AFTER CREATE: %s",
+                        credential_store.get_profiles(),
                     )
                 except Exception:
-                    app.logger.exception("Failed to create profile %s", form["profile_name"])
+                    app.logger.exception("Failed to create profile %s", profile_name)
 
             return redirect(url_for("dashboard"))
         except Exception as exc:
