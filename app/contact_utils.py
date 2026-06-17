@@ -73,10 +73,12 @@ def _format_name(name):
 
 
 def _get_property(card, prop_name):
+    if hasattr(card, "contents"):
+        prop = card.contents.get(prop_name)
+        if prop is not None:
+            return prop
     if hasattr(card, prop_name):
         return getattr(card, prop_name)
-    if hasattr(card, "contents"):
-        return card.contents.get(prop_name)
     return None
 
 
@@ -91,6 +93,8 @@ def _extract_text(prop):
     if prop is None:
         return ""
     try:
+        if isinstance(prop, (list, tuple)):
+            return " ".join(_extract_text(item) for item in prop if _extract_text(item))
         value = getattr(prop, "value", prop)
         if value is None:
             return ""
@@ -128,12 +132,7 @@ def extract_address(card):
         adr_value = getattr(adr_item, "value", None)
         if adr_value is None:
             continue
-        if isinstance(adr_value, (list, tuple)):
-            addresses.append(
-                ", ".join(str(part).strip() for part in adr_value if part)
-            )
-        else:
-            addresses.append(str(adr_value).strip())
+        addresses.append(_format_address_summary(_address_components(adr_value)))
     return "; ".join(address for address in addresses if address)
 
 

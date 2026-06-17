@@ -1,7 +1,8 @@
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from contextlib import closing
+from datetime import datetime, timezone
 
 # Optional: cryptography may not be available in all environments. Import safely.
 try:
@@ -14,6 +15,10 @@ except Exception:
     logging.getLogger(__name__).warning("cryptography.fernet not available; passwords will be stored unencrypted")
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class CredentialStore:
@@ -49,7 +54,7 @@ class CredentialStore:
         return sqlite3.connect(self.db_path)
 
     def _initialize_database(self):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS connection_profiles (
@@ -116,9 +121,9 @@ class CredentialStore:
 
     # Profile CRUD
     def create_profile(self, name, server_url, username, password=None, enabled=True):
-        now = datetime.utcnow().isoformat() + "Z"
+        now = _utc_now()
         encrypted = self._encrypt(password) if password else None
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cur = conn.execute(
                 "INSERT INTO connection_profiles (name, server_url, username, password_encrypted, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (name, server_url, username, encrypted, 1 if enabled else 0, now, now),
@@ -129,7 +134,7 @@ class CredentialStore:
         return profile_id
 
     def update_profile(self, profile_id, name=None, server_url=None, username=None, password=None, enabled=None):
-        now = datetime.utcnow().isoformat() + "Z"
+        now = _utc_now()
         fields = []
         params = []
         if name is not None:
@@ -151,20 +156,20 @@ class CredentialStore:
         params.append(now)
         params.append(profile_id)
         set_clause = ", ".join(fields)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute(f"UPDATE connection_profiles SET {set_clause} WHERE id = ?", params)
             conn.commit()
         LOGGER.info("Updated profile %s", profile_id)
 
     def delete_profile(self, profile_id):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute("DELETE FROM address_books WHERE profile_id = ?", (profile_id,))
             conn.execute("DELETE FROM connection_profiles WHERE id = ?", (profile_id,))
             conn.commit()
         LOGGER.info("Deleted profile and cached books %s", profile_id)
 
     def get_profile(self, profile_id):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             row = conn.execute(
                 "SELECT id, name, server_url, username, password_encrypted, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles WHERE id = ?",
                 (profile_id,),
@@ -185,7 +190,7 @@ class CredentialStore:
             }
 
     def get_profiles(self):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cursor = conn.execute(
                 "SELECT id, name, server_url, username, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles ORDER BY name"
             )
@@ -207,7 +212,7 @@ class CredentialStore:
         return profiles
 
     def get_enabled_profiles(self):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cursor = conn.execute(
                 "SELECT id, name, server_url, username, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles WHERE enabled = 1 ORDER BY name"
             )
@@ -230,8 +235,8 @@ class CredentialStore:
 
     # Address book cache
     def save_or_update_address_books(self, profile_id, books):
-        now = datetime.utcnow().isoformat() + "Z"
-        with self._connect() as conn:
+        now = _utc_now()
+        with closing(self._connect()) as conn:
             for b in books:
                 display_name = b.get("displayname") or b.get("name") or b.get("display_name")
                 path = b.get("path")
@@ -246,7 +251,7 @@ class CredentialStore:
         LOGGER.info("Saved/updated %d address books for profile %s", len(books), profile_id)
 
     def get_cached_address_books(self, profile_id):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cursor = conn.execute(
                 "SELECT id, profile_id, display_name, path, href, contact_count, enabled, last_seen_at FROM address_books WHERE profile_id = ? ORDER BY display_name",
                 (profile_id,),
@@ -268,14 +273,14 @@ class CredentialStore:
         return books
 
     def delete_address_books(self, profile_id):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute("DELETE FROM address_books WHERE profile_id = ?", (profile_id,))
             conn.commit()
 
     # Feature registry persistence
     def add_feature(self, name, status="planned", description=None):
-        now = datetime.utcnow().isoformat() + "Z"
-        with self._connect() as conn:
+        now = _utc_now()
+        with closing(self._connect()) as conn:
             conn.execute(
                 "INSERT INTO features (name, status, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET status=excluded.status, description=excluded.description, updated_at=excluded.updated_at",
                 (name, status, description or "", now, now),
@@ -284,7 +289,7 @@ class CredentialStore:
         LOGGER.info("Added/updated feature %s (%s)", name, status)
 
     def get_features(self):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             cursor = conn.execute(
                 "SELECT id, name, status, description, created_at, updated_at FROM features ORDER BY name"
             )
@@ -303,16 +308,14 @@ class CredentialStore:
         return features
 
     def delete_feature(self, feature_id):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute("DELETE FROM features WHERE id = ?", (feature_id,))
             conn.commit()
-            LOGGER.info("Deleted feature %s", feature_id)
-            conn.commit()
-            LOGGER.info("Deleted cached address books for profile %s", profile_id)
+        LOGGER.info("Deleted feature %s", feature_id)
 
     def update_connection_status(self, profile_id, success, error_message=None):
-        now = datetime.utcnow().isoformat() + "Z"
-        with self._connect() as conn:
+        now = _utc_now()
+        with closing(self._connect()) as conn:
             if success:
                 conn.execute(
                     "UPDATE connection_profiles SET last_successful_connect_at = ?, last_error = NULL, updated_at = ? WHERE id = ?",
