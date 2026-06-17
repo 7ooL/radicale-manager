@@ -336,7 +336,32 @@ def dashboard():
         except Exception:
             entry["books"] = []
         display.append(entry)
-    return render_template("dashboard.html", title="Dashboard", profiles=display)
+    # compute summary metrics from cached data
+    try:
+        all_profiles = credential_store.get_profiles()
+        total_connections = len(all_profiles)
+        total_address_books = 0
+        total_contacts = 0
+        for prof in all_profiles:
+            books = credential_store.get_cached_address_books(prof["id"]) or []
+            total_address_books += len(books)
+            for b in books:
+                total_contacts += (b.get("contact_count") or 0)
+    except Exception:
+        total_connections = len(profiles)
+        total_address_books = sum(len(p.get("books") or []) for p in profiles)
+        total_contacts = sum((b.get("contact_count") or 0) for p in profiles for b in (p.get("books") or []))
+
+    metrics = {
+        "app_version": app.config.get("APP_VERSION"),
+        "total_connections": total_connections,
+        "total_address_books": total_address_books,
+        "total_contacts": total_contacts,
+        "duplicates": 0,
+        "issues": 0,
+    }
+
+    return render_template("dashboard.html", title="Dashboard", profiles=display, metrics=metrics)
 
 
 @app.route('/health')

@@ -2,6 +2,16 @@
 {% block content %}
   <div class="card">
     <h1>Address Books</h1>
+    {% if metrics %}
+      <div class="summary-card">
+        <h2>Radicale Manager {{ metrics.app_version or '' }}</h2>
+        <div class="field-row"><strong>Connections</strong><span>{{ metrics.total_connections }}</span></div>
+        <div class="field-row"><strong>Address Books</strong><span>{{ metrics.total_address_books }}</span></div>
+        <div class="field-row"><strong>Contacts</strong><span>{{ metrics.total_contacts }}</span></div>
+        <div class="field-row"><strong>Duplicates</strong><span>{{ metrics.duplicates }}</span></div>
+        <div class="field-row"><strong>Issues</strong><span>{{ metrics.issues }}</span></div>
+      </div>
+    {% endif %}
     {% if profiles %}
       {% for profile in profiles %}
         <section class="profile-block">
