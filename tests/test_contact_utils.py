@@ -9,6 +9,7 @@ from app.contact_utils import (
     extract_note,
     extract_organization,
     extract_phones,
+    merge_unknown_fields_into_vcard,
     vcard_to_dict,
 )
 
@@ -141,6 +142,33 @@ class ContactUtilsTest(unittest.TestCase):
         self.assertEqual(result["uid"], new_uid)
         self.assertEqual(result["full_name"], "Jane Smith Copy")
         self.assertEqual(result["emails"], ["jane@example.com"])
+
+    def test_merge_unknown_fields_preserves_custom_properties(self):
+        original = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-1\n"
+            "FN:Original Name\n"
+            "N:Name;Original;;;\n"
+            "X-CUSTOM-FIELD:Preserve Me\n"
+            "X-ANOTHER;TYPE=WORK:Still Here\n"
+            "END:VCARD\n"
+        )
+        rebuilt = build_vcard_from_fields(
+            {
+                "uid": "contact-1",
+                "full_name": "Updated Name",
+                "first_name": "Updated",
+                "last_name": "Name",
+                "emails": ["updated@example.com"],
+            }
+        )
+
+        merged = merge_unknown_fields_into_vcard(original, rebuilt)
+
+        self.assertIn("FN:Updated Name", merged)
+        self.assertIn("X-CUSTOM-FIELD:Preserve Me", merged)
+        self.assertIn("X-ANOTHER;TYPE=WORK:Still Here", merged)
 
 
 if __name__ == "__main__":

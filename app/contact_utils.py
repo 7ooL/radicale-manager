@@ -538,6 +538,56 @@ def build_vcard_from_fields(values):
     return card.serialize()
 
 
+def merge_unknown_fields_into_vcard(original_vcard, rebuilt_vcard):
+    """Merge non-standard/unknown properties from original into rebuilt vCard text."""
+    known = {
+        "BEGIN",
+        "END",
+        "VERSION",
+        "FN",
+        "N",
+        "NICKNAME",
+        "ORG",
+        "TITLE",
+        "EMAIL",
+        "TEL",
+        "ADR",
+        "URL",
+        "CATEGORIES",
+        "NOTE",
+        "BDAY",
+        "UID",
+        "PHOTO",
+    }
+
+    def unfold_lines(raw_text):
+        lines = []
+        for line in (raw_text or "").replace("\r\n", "\n").split("\n"):
+            if not line:
+                continue
+            if line.startswith((" ", "\t")) and lines:
+                lines[-1] += line[1:]
+            else:
+                lines.append(line)
+        return lines
+
+    unknown_lines = []
+    for line in unfold_lines(original_vcard):
+        if ":" not in line:
+            continue
+        prop = line.split(":", 1)[0].split(";", 1)[0].upper()
+        if prop not in known:
+            unknown_lines.append(line)
+
+    if not unknown_lines:
+        return rebuilt_vcard
+
+    rebuilt = unfold_lines(rebuilt_vcard)
+    end_index = next((idx for idx, line in enumerate(rebuilt) if line.upper() == "END:VCARD"), len(rebuilt))
+    merged = rebuilt[:end_index] + unknown_lines + rebuilt[end_index:]
+    return "\n".join(merged) + "\n"
+
+
 def duplicate_vcard(vcard_text):
     """Return a copied vCard with a new UID and a display name marked as a copy."""
     card = vobject.readOne(vcard_text)

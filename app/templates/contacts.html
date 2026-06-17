@@ -3,6 +3,15 @@
   <div class="card">
     <h1>Contacts in {{ book.name }}</h1>
     <p class="muted">{{ book.path }}</p>
+    {% if stats %}
+      <div class="summary-card">
+        <div class="field-row"><span class="field-label">Total</span><span>{{ stats.total }}</span></div>
+        <div class="field-row"><span class="field-label">With Email</span><span>{{ stats.with_email }}</span></div>
+        <div class="field-row"><span class="field-label">With Phone</span><span>{{ stats.with_phone }}</span></div>
+        <div class="field-row"><span class="field-label">Missing Name</span><span>{{ stats.missing_name }}</span></div>
+        <div class="field-row"><span class="field-label">Last Modified</span><span>{{ stats.last_modified or 'unknown' }}</span></div>
+      </div>
+    {% endif %}
     <div class="button-row">
       <a class="button" href="{{ url_for('profile_new_contact', profile_id=profile_id, collection_path=book.path) }}">Add Contact</a>
       <a class="button secondary" href="{{ url_for('profile_contact_quality', profile_id=profile_id, collection_path=book.path) }}">Quality Scan</a>
@@ -17,6 +26,7 @@
             <option value="export">Export selected</option>
             {% if bulk_destinations %}
               <option value="move">Move selected</option>
+              <option value="copy">Copy selected</option>
             {% endif %}
             <option value="delete">Delete selected</option>
           </select>
@@ -154,11 +164,11 @@
       }
       if (bulkAction && bulkDestinationLabel && bulkDestinationSelect) {
         const updateBulkDestination = () => {
-          const moving = bulkAction.value === 'move';
-          bulkDestinationLabel.classList.toggle('hidden', !moving);
-          bulkDestinationSelect.disabled = !moving;
-          bulkDestinationSelect.required = moving;
-          if (!moving) bulkDestinationSelect.value = '';
+          const needsDestination = bulkAction.value === 'move' || bulkAction.value === 'copy';
+          bulkDestinationLabel.classList.toggle('hidden', !needsDestination);
+          bulkDestinationSelect.disabled = !needsDestination;
+          bulkDestinationSelect.required = needsDestination;
+          if (!needsDestination) bulkDestinationSelect.value = '';
         };
         bulkAction.addEventListener('change', updateBulkDestination);
         updateBulkDestination();

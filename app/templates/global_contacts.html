@@ -3,6 +3,38 @@
   <div class="card">
     <h1>All Contacts</h1>
     <p class="muted">{{ contacts|length }} contacts across enabled connections and cached address books.</p>
+    <form method="get" action="{{ url_for('global_contacts') }}" class="bulk-form">
+      <label>
+        Search
+        <input type="search" name="q" value="{{ search_filters.q }}" placeholder="Name, email, phone, company..." />
+      </label>
+      <label>
+        Connection
+        <select name="profile_id">
+          <option value="">All connections</option>
+          {% for profile in profiles %}
+            <option value="{{ profile.id }}" {% if search_filters.profile_id == profile.id|string %}selected{% endif %}>{{ profile.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Address Book
+        <select name="book_path">
+          <option value="">All books</option>
+          {% for pb in profile_books %}
+            <option value="{{ pb.path }}" {% if search_filters.book_path == pb.path %}selected{% endif %}>{{ pb.profile_name }} / {{ pb.display_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="checkbox-label"><input type="checkbox" name="has_email" value="1" {% if search_filters.has_email %}checked{% endif %} /> Has email</label>
+      <label class="checkbox-label"><input type="checkbox" name="has_phone" value="1" {% if search_filters.has_phone %}checked{% endif %} /> Has phone</label>
+      <label>
+        Recently modified (days)
+        <input type="number" min="0" name="recent_days" value="{{ search_filters.recent_days or '' }}" placeholder="7" />
+      </label>
+      <button class="button small" type="submit">Search</button>
+      <a class="button small secondary" href="{{ url_for('global_contacts') }}">Reset</a>
+    </form>
 
     {% if errors %}
       <div class="result-block">
@@ -24,6 +56,7 @@
             <option value="export">Export selected</option>
             {% if destinations %}
               <option value="move">Move selected</option>
+              <option value="copy">Copy selected</option>
             {% endif %}
             <option value="delete">Delete selected</option>
           </select>
@@ -179,11 +212,11 @@
       }
       if (bulkAction && bulkDestinationLabel && bulkDestinationSelect) {
         const updateBulkDestination = () => {
-          const moving = bulkAction.value === 'move';
-          bulkDestinationLabel.classList.toggle('hidden', !moving);
-          bulkDestinationSelect.disabled = !moving;
-          bulkDestinationSelect.required = moving;
-          if (!moving) bulkDestinationSelect.value = '';
+          const needsDestination = bulkAction.value === 'move' || bulkAction.value === 'copy';
+          bulkDestinationLabel.classList.toggle('hidden', !needsDestination);
+          bulkDestinationSelect.disabled = !needsDestination;
+          bulkDestinationSelect.required = needsDestination;
+          if (!needsDestination) bulkDestinationSelect.value = '';
         };
         bulkAction.addEventListener('change', updateBulkDestination);
         updateBulkDestination();

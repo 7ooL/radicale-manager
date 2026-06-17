@@ -1,6 +1,8 @@
-﻿import logging
+import logging
 import os
-from datetime import datetime, timezone
+import json
+import zipfile
+from datetime import datetime, timezone, timedelta
 from io import BytesIO
 import re
 import uuid
@@ -24,8 +26,9 @@ from contact_utils import (
     build_vcard_from_fields,
     duplicate_vcard,
     get_contact_filename,
+    merge_unknown_fields_into_vcard,
 )
-from credential_store import CredentialStore
+from credential_store import CredentialStore, HAS_FERNET
 
 
 def configure_logging(app):
@@ -385,6 +388,12 @@ def import_vcf_into_book(profile_id, collection_path, file_storage):
             failed.append({"error": str(exc), "filename": contact.get("filename")})
 
     update_cached_contact_count(profile_id, collection_path, None)
+    log_event(
+        "import",
+        profile_id=profile_id,
+        collection_path=collection_path,
+        details={"processed": len(contacts), "created": created, "updated": updated, "failed": len(failed)},
+    )
     return {
         "processed": len(contacts),
         "created": created,
@@ -477,6 +486,19 @@ def empty_contact_fields():
     }
 
 
+def parse_multivalue_form(field_name):
+    values = []
+    for raw in request.form.getlist(field_name):
+        text = (raw or "").strip()
+        if text:
+            values.append(text)
+    if values:
+        return values
+    # Backwards compatibility with older comma-separated inputs.
+    fallback = request.form.get(field_name, "")
+    return [part.strip() for part in fallback.split(",") if part.strip()]
+
+
 def contact_fields_from_form(existing_uid=None):
     return {
         "uid": existing_uid,
@@ -489,10 +511,10 @@ def contact_fields_from_form(existing_uid=None):
         "birthday": request.form.get("birthday", "").strip(),
         "address": request.form.get("address", "").strip(),
         "note": request.form.get("note", "").strip(),
-        "emails": [email.strip() for email in request.form.get("emails", "").split(",") if email.strip()],
-        "phones": [phone.strip() for phone in request.form.get("phones", "").split(",") if phone.strip()],
-        "urls": [url.strip() for url in request.form.get("urls", "").split(",") if url.strip()],
-        "categories": [category.strip() for category in request.form.get("categories", "").split(",") if category.strip()],
+        "emails": parse_multivalue_form("emails"),
+        "phones": parse_multivalue_form("phones"),
+        "urls": parse_multivalue_form("urls"),
+        "categories": parse_multivalue_form("categories"),
     }
 
 
@@ -506,6 +528,43 @@ def parse_global_contact_selection(value):
     if not collection_path or not filename:
         raise ValueError("Invalid contact selection")
     return profile_id, collection_path, filename
+
+
+def parse_iso_timestamp(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def log_event(action, profile_id=None, collection_path=None, contact_filename=None, details=None):
+    try:
+        credential_store.add_event(
+            action=action,
+            profile_id=profile_id,
+            collection_path=collection_path,
+            contact_filename=contact_filename,
+            details=details or {},
+            source="app",
+        )
+    except Exception:
+        app.logger.debug("Failed to log operation event %s", action, exc_info=True)
+
+
+def security_status():
+    secret_present = bool(app.config.get("PROFILE_SECRET"))
+    return {
+        "fernet_available": bool(HAS_FERNET),
+        "secret_configured": secret_present,
+        "encryption_enabled": bool(HAS_FERNET and secret_present),
+        "guidance": (
+            "Set PROFILE_SECRET_KEY to enable encrypted stored passwords."
+            if not secret_present
+            else ""
+        ),
+    }
 
 
 def make_client():
@@ -668,7 +727,78 @@ def connections():
             p["books"] = credential_store.get_cached_address_books(p["id"]) or []
         except Exception:
             p["books"] = []
-    return render_template("connections.html", title="Connections", profiles=profiles)
+    return render_template(
+        "connections.html",
+        title="Connections",
+        profiles=profiles,
+        security=security_status(),
+    )
+
+
+@app.route("/connections/export")
+def export_connections():
+    export_data = {
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "profiles": [],
+    }
+    for profile in credential_store.get_profiles():
+        full = credential_store.get_profile(profile["id"]) or {}
+        export_data["profiles"].append(
+            {
+                "name": profile.get("name"),
+                "server_url": profile.get("server_url"),
+                "username": profile.get("username"),
+                "password": full.get("password"),
+                "enabled": bool(profile.get("enabled")),
+                "group_name": profile.get("group_name", ""),
+                "tags": profile.get("tags") or [],
+                "books": credential_store.get_cached_address_books(profile["id"]) or [],
+            }
+        )
+    content = json.dumps(export_data, indent=2)
+    log_event("profile_export", details={"profiles": len(export_data["profiles"])})
+    return send_file(
+        BytesIO(content.encode("utf-8")),
+        download_name=f"radicale-connections-{datetime.now(timezone.utc).date()}.json",
+        mimetype="application/json",
+        as_attachment=True,
+    )
+
+
+@app.route("/connections/import", methods=["POST"])
+def import_connections():
+    upload = request.files.get("connections_file")
+    if not upload:
+        flash("Choose a connection export JSON file.", "error")
+        return redirect(url_for("connections"))
+    try:
+        payload = json.loads(upload.read().decode("utf-8", errors="replace"))
+        profiles = payload.get("profiles") if isinstance(payload, dict) else []
+        if not isinstance(profiles, list):
+            raise ValueError("Invalid profiles payload")
+        imported = 0
+        for item in profiles:
+            if not isinstance(item, dict):
+                continue
+            profile_id = credential_store.create_profile(
+                item.get("name") or f"{item.get('username', 'user')}@{item.get('server_url', 'server')}",
+                item.get("server_url") or "",
+                item.get("username") or "",
+                password=item.get("password"),
+                enabled=bool(item.get("enabled", True)),
+                group_name=item.get("group_name", ""),
+                tags=item.get("tags") or [],
+            )
+            books = item.get("books") or []
+            if books:
+                credential_store.save_or_update_address_books(profile_id, books)
+            imported += 1
+        log_event("profile_import", details={"profiles": imported})
+        flash(f"Imported {imported} connection profiles.", "success")
+    except Exception as exc:
+        app.logger.exception("Connection import failed")
+        flash(f"Connection import failed: {exc}", "error")
+    return redirect(url_for("connections"))
 
 
 @app.route("/connections/new", methods=["GET", "POST"])
@@ -679,6 +809,8 @@ def new_connection():
         "username": "",
         "password": "",
         "profile_name": "",
+        "group_name": "",
+        "tags": "",
         "enabled": True,
     }
     if request.method == "POST":
@@ -689,6 +821,8 @@ def new_connection():
         server_url = request.form.get("server_url", "").strip()
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        group_name = request.form.get("group_name", "").strip()
+        tags = request.form.get("tags", "").strip()
         enabled = bool(request.form.get("enabled"))
         form.update(
             {
@@ -696,6 +830,8 @@ def new_connection():
                 "username": username,
                 "password": password,
                 "profile_name": name,
+                "group_name": group_name,
+                "tags": tags,
                 "enabled": enabled,
             }
         )
@@ -703,7 +839,15 @@ def new_connection():
             flash("Name, server URL and username are required.", "error")
             return render_template("connections_new.html", form=form)
         try:
-            profile_id = credential_store.create_profile(name, server_url, username, password=password or None, enabled=enabled)
+            credential_store.create_profile(
+                name,
+                server_url,
+                username,
+                password=password or None,
+                enabled=enabled,
+                group_name=group_name,
+                tags=tags,
+            )
             flash("Connection saved.", "success")
             return redirect(url_for("connections"))
         except Exception as exc:
@@ -726,6 +870,8 @@ def edit_connection(profile_id):
         "username": profile.get("username") or "",
         "password": "",
         "profile_name": profile.get("name") or "",
+        "group_name": profile.get("group_name") or "",
+        "tags": profile.get("tags_text") or ", ".join(profile.get("tags") or []),
         "enabled": profile.get("enabled", True),
     }
 
@@ -737,6 +883,8 @@ def edit_connection(profile_id):
         server_url = request.form.get("server_url", "").strip()
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        group_name = request.form.get("group_name", "").strip()
+        tags = request.form.get("tags", "").strip()
         enabled = bool(request.form.get("enabled"))
         form.update(
             {
@@ -744,6 +892,8 @@ def edit_connection(profile_id):
                 "username": username,
                 "password": "",
                 "profile_name": name,
+                "group_name": group_name,
+                "tags": tags,
                 "enabled": enabled,
             }
         )
@@ -759,6 +909,8 @@ def edit_connection(profile_id):
                 server_url=server_url,
                 username=username,
                 password=password if password else None,
+                group_name=group_name,
+                tags=tags,
                 enabled=enabled,
             )
             flash("Connection updated.", "success")
@@ -855,9 +1007,11 @@ def test_connection(profile_id):
         books = fill_missing_contact_counts(profile_id, client, books)
         credential_store.save_or_update_address_books(profile_id, books)
         credential_store.update_connection_status(profile_id, True)
+        log_event("connection_test", profile_id=profile_id, details={"books": len(books), "result": "success"})
         flash(f"Connection test succeeded: found {len(books)} books.", "success")
     except Exception as exc:
         credential_store.update_connection_status(profile_id, False, str(exc))
+        log_event("connection_test", profile_id=profile_id, details={"result": "failed", "error": str(exc)})
         app.logger.exception("Connection test failed for %s", profile_id)
         flash(f"Connection test failed: {exc}", "error")
     return redirect(url_for("connections"))
@@ -879,9 +1033,11 @@ def refresh_addressbooks(profile_id):
         books = fill_missing_contact_counts(profile_id, client, books)
         credential_store.save_or_update_address_books(profile_id, books)
         credential_store.update_connection_status(profile_id, True)
+        log_event("addressbook_refresh", profile_id=profile_id, details={"books": len(books), "result": "success"})
         flash(f"Refreshed {len(books)} address books.", "success")
     except Exception as exc:
         credential_store.update_connection_status(profile_id, False, str(exc))
+        log_event("addressbook_refresh", profile_id=profile_id, details={"result": "failed", "error": str(exc)})
         app.logger.exception("Refresh failed for %s", profile_id)
         flash(f"Refresh failed: {exc}", "error")
     return redirect(url_for("connections"))
@@ -1045,13 +1201,65 @@ def dashboard():
         "duplicates": None,
         "issues": 0,
     }
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    since_iso = since.isoformat().replace("+00:00", "Z")
+    metrics["recent_imports"] = credential_store.count_recent_events("import", since_iso)
+    metrics["recent_exports"] = (
+        credential_store.count_recent_events("export", since_iso)
+        + credential_store.count_recent_events("addressbook_export", since_iso)
+        + credential_store.count_recent_events("contact_export", since_iso)
+        + credential_store.count_recent_events("connection_export", since_iso)
+        + credential_store.count_recent_events("backup_export", since_iso)
+    )
+    metrics["recent_moves"] = credential_store.count_recent_events("move", since_iso)
+    metrics["recent_deletes"] = credential_store.count_recent_events("delete", since_iso)
+    safe_profiles = locals().get("all_profiles") or credential_store.get_profiles()
+    metrics["connection_health"] = {
+        "healthy": sum(1 for profile in safe_profiles if not profile.get("last_error")),
+        "unhealthy": sum(1 for profile in safe_profiles if profile.get("last_error")),
+    }
+    recent_backup = credential_store.get_recent_events(limit=1, actions=["backup_export"])
+    last_backup_at = recent_backup[0]["created_at"] if recent_backup else None
+    metrics["backup_health"] = {
+        "last_backup_at": last_backup_at,
+        "status": "healthy" if last_backup_at else "warning",
+    }
+    recent_events = credential_store.get_recent_events(limit=8)
 
-    return render_template("dashboard.html", title="Dashboard", profiles=display, metrics=metrics)
+    return render_template(
+        "dashboard.html",
+        title="Dashboard",
+        profiles=display,
+        metrics=metrics,
+        recent_events=recent_events,
+    )
 
 
 @app.route("/contacts")
 def global_contacts():
     """Show all contacts across enabled profiles and address books."""
+    search_query = request.args.get("q", "").strip()
+    filter_profile_id = request.args.get("profile_id", "").strip()
+    filter_book_path = request.args.get("book_path", "").strip()
+    has_email = request.args.get("has_email") in ("1", "true", "on", "yes")
+    has_phone = request.args.get("has_phone") in ("1", "true", "on", "yes")
+    recent_days = request.args.get("recent_days", "").strip()
+    recent_days_int = 0
+    try:
+        recent_days_int = int(recent_days) if recent_days else 0
+    except Exception:
+        recent_days_int = 0
+
+    recent_keys = set()
+    if recent_days_int > 0:
+        since_iso = (datetime.now(timezone.utc) - timedelta(days=recent_days_int)).isoformat().replace("+00:00", "Z")
+        recent_keys = set(
+            credential_store.get_recent_contact_keys(
+                since_iso,
+                actions=["import", "create", "edit", "move", "copy", "duplicate"],
+            )
+        )
+
     contacts = []
     errors = []
     profiles = credential_store.get_enabled_profiles()
@@ -1081,12 +1289,37 @@ def global_contacts():
                 try:
                     parsed = vcard_to_dict(item["vcard"])
                     filename = get_contact_filename(item["href"])
+                    profile_id = profile["id"]
+                    normalized_path = normalized_book["path"].strip("/")
+                    searchable = " ".join(
+                        [
+                            parsed.get("full_name") or "",
+                            parsed.get("organization") or "",
+                            " ".join(parsed.get("emails") or []),
+                            " ".join(parsed.get("phones") or []),
+                            normalized_book["display_name"],
+                            profile["name"],
+                            filename or "",
+                        ]
+                    ).casefold()
+                    if search_query and search_query.casefold() not in searchable:
+                        continue
+                    if filter_profile_id and str(profile_id) != filter_profile_id:
+                        continue
+                    if filter_book_path and normalized_path != filter_book_path.strip("/"):
+                        continue
+                    if has_email and not parsed.get("emails"):
+                        continue
+                    if has_phone and not parsed.get("phones"):
+                        continue
+                    if recent_days_int > 0 and (profile_id, normalized_path, filename) not in recent_keys:
+                        continue
                     parsed.update(
                         {
                             "filename": filename,
-                            "profile_id": profile["id"],
+                            "profile_id": profile_id,
                             "profile_name": profile["name"],
-                            "book_path": normalized_book["path"],
+                            "book_path": normalized_path,
                             "book_name": normalized_book["display_name"],
                         }
                     )
@@ -1103,12 +1336,34 @@ def global_contacts():
         )
     )
     destinations = build_contact_destinations()
+    profile_books = []
+    for profile in profiles:
+        for book in credential_store.get_cached_address_books(profile["id"]) or []:
+            normalized_book = normalize_book_for_template(book)
+            profile_books.append(
+                {
+                    "profile_id": profile["id"],
+                    "profile_name": profile["name"],
+                    "path": normalized_book["path"].strip("/"),
+                    "display_name": normalized_book["display_name"],
+                }
+            )
     return render_template(
         "global_contacts.html",
         title="All Contacts",
         contacts=contacts,
         destinations=destinations,
         errors=errors,
+        profiles=profiles,
+        profile_books=profile_books,
+        search_filters={
+            "q": search_query,
+            "profile_id": filter_profile_id,
+            "book_path": filter_book_path,
+            "has_email": has_email,
+            "has_phone": has_phone,
+            "recent_days": recent_days_int,
+        },
     )
 
 
@@ -1148,6 +1403,7 @@ def global_bulk_contacts():
             return redirect(url_for("global_contacts"))
         if failed:
             flash(f"Exported {len(exported)} contacts. Failed: {'; '.join(failed)}", "error")
+        log_event("export", details={"scope": "global", "count": len(exported), "failed": len(failed)})
         content = "\n".join(exported) + "\n"
         filename = f"radicale-global-selected-{datetime.now(timezone.utc).date()}.vcf"
         return send_file(
@@ -1170,6 +1426,8 @@ def global_bulk_contacts():
                 failed.append(f"{filename}: {exc}")
         for touched_profile_id, touched_path in touched_books:
             update_cached_contact_count(touched_profile_id, touched_path, None)
+        for source_profile_id, source_path, filename in refs:
+            log_event("delete", profile_id=source_profile_id, collection_path=source_path, contact_filename=filename)
         if failed:
             flash(f"Deleted {deleted} contacts. Failed: {'; '.join(failed)}", "error")
         else:
@@ -1212,6 +1470,13 @@ def global_bulk_contacts():
                 source_client.delete_contact(f"{source_path}/{filename}")
                 touched_books.add((source_profile_id, source_path))
                 moved += 1
+                log_event(
+                    "move",
+                    profile_id=source_profile_id,
+                    collection_path=source_path,
+                    contact_filename=filename,
+                    details={"dest_profile_id": dest_profile_id, "dest_path": dest_path},
+                )
             except Exception as exc:
                 failed.append(f"{filename}: {exc}")
         for touched_profile_id, touched_path in touched_books:
@@ -1220,6 +1485,50 @@ def global_bulk_contacts():
             flash(f"Moved {moved} contacts. Failed: {'; '.join(failed)}", "error")
         else:
             flash(f"Moved {moved} contacts.", "success")
+        return redirect(url_for("global_contacts"))
+
+    if action == "copy":
+        dest = request.form.get("dest")
+        dest_profile_id = None
+        dest_path = None
+        if dest:
+            try:
+                parts = dest.split("::", 1)
+                dest_profile_id = int(parts[0])
+                dest_path = parts[1].strip("/")
+            except Exception:
+                dest_profile_id = None
+                dest_path = None
+        if not dest_profile_id or not dest_path:
+            flash("Destination profile and path are required.", "error")
+            return redirect(url_for("global_contacts"))
+        copied = 0
+        failed = []
+        try:
+            dest_client = client_for(dest_profile_id)
+        except Exception as exc:
+            flash(f"Unable to access destination profile: {exc}", "error")
+            return redirect(url_for("global_contacts"))
+        for source_profile_id, source_path, filename in refs:
+            try:
+                source_client = client_for(source_profile_id)
+                vcard_text, _etag = source_client.get_contact(f"{source_path}/{filename}")
+                dest_client.put_contact(dest_path, filename, vcard_text)
+                copied += 1
+                log_event(
+                    "copy",
+                    profile_id=source_profile_id,
+                    collection_path=source_path,
+                    contact_filename=filename,
+                    details={"dest_profile_id": dest_profile_id, "dest_path": dest_path},
+                )
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+        update_cached_contact_count(dest_profile_id, dest_path, None)
+        if failed:
+            flash(f"Copied {copied} contacts. Failed: {'; '.join(failed)}", "error")
+        else:
+            flash(f"Copied {copied} contacts.", "success")
         return redirect(url_for("global_contacts"))
 
     flash("Choose a bulk action.", "error")
@@ -1345,6 +1654,13 @@ def profile_view_contacts(profile_id, collection_path):
                 (contact.get("filename") or "").casefold(),
             )
         )
+        stats = {
+            "total": len(contacts),
+            "with_email": sum(1 for contact in contacts if contact.get("emails")),
+            "with_phone": sum(1 for contact in contacts if contact.get("phones")),
+            "missing_name": sum(1 for contact in contacts if not (contact.get("full_name") or "").strip()),
+            "last_modified": book.get("last_seen_at"),
+        }
         update_cached_contact_count(profile_id, collection_path, len(contacts))
         bulk_destinations = build_contact_destinations(
             exclude_profile_id=profile_id,
@@ -1357,6 +1673,7 @@ def profile_view_contacts(profile_id, collection_path):
             contacts=contacts,
             profile_id=profile_id,
             bulk_destinations=bulk_destinations,
+            stats=stats,
         )
     except Exception as exc:
         app.logger.exception("Unable to load contacts for profile %s book %s", profile_id, collection_path)
@@ -1389,6 +1706,8 @@ def profile_bulk_contacts(profile_id, collection_path):
             except Exception as exc:
                 failed.append(f"{filename}: {exc}")
         update_cached_contact_count(profile_id, collection_path, None)
+        for filename in filenames:
+            log_event("delete", profile_id=profile_id, collection_path=collection_path, contact_filename=filename)
         if failed:
             flash(f"Deleted {deleted} contacts. Failed: {'; '.join(failed)}", "error")
         else:
@@ -1409,6 +1728,7 @@ def profile_bulk_contacts(profile_id, collection_path):
             return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
         if failed:
             flash(f"Exported {len(exported)} contacts. Failed: {'; '.join(failed)}", "error")
+        log_event("export", profile_id=profile_id, collection_path=collection_path, details={"scope": "book", "count": len(exported), "failed": len(failed)})
         content = "\n".join(exported) + "\n"
         filename = f"radicale-selected-{datetime.now(timezone.utc).date()}.vcf"
         return send_file(
@@ -1450,6 +1770,13 @@ def profile_bulk_contacts(profile_id, collection_path):
                 dest_client.put_contact(dest_path, filename, vcard_text)
                 client.delete_contact(source_href)
                 moved += 1
+                log_event(
+                    "move",
+                    profile_id=profile_id,
+                    collection_path=collection_path,
+                    contact_filename=filename,
+                    details={"dest_profile_id": dest_profile_id, "dest_path": dest_path},
+                )
             except Exception as exc:
                 failed.append(f"{filename}: {exc}")
 
@@ -1459,6 +1786,53 @@ def profile_bulk_contacts(profile_id, collection_path):
             flash(f"Moved {moved} contacts. Failed: {'; '.join(failed)}", "error")
         else:
             flash(f"Moved {moved} contacts.", "success")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+    if action == "copy":
+        dest = request.form.get("dest")
+        dest_profile_id = None
+        dest_path = None
+        if dest:
+            try:
+                parts = dest.split("::", 1)
+                dest_profile_id = int(parts[0])
+                dest_path = parts[1]
+            except Exception:
+                dest_profile_id = None
+                dest_path = None
+        if not dest_profile_id or not dest_path:
+            flash("Destination profile and path are required.", "error")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+        try:
+            dest_client = get_client_for_profile(dest_profile_id)
+        except Exception as exc:
+            app.logger.exception("Failed to build destination client for profile %s", dest_profile_id)
+            flash(f"Unable to access destination profile: {exc}", "error")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+        copied = 0
+        failed = []
+        for filename in filenames:
+            source_href = f"{collection_path.rstrip('/')}/{filename}"
+            try:
+                vcard_text, _etag = client.get_contact(source_href)
+                dest_client.put_contact(dest_path, filename, vcard_text)
+                copied += 1
+                log_event(
+                    "copy",
+                    profile_id=profile_id,
+                    collection_path=collection_path,
+                    contact_filename=filename,
+                    details={"dest_profile_id": dest_profile_id, "dest_path": dest_path},
+                )
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+
+        update_cached_contact_count(dest_profile_id, dest_path, None)
+        if failed:
+            flash(f"Copied {copied} contacts. Failed: {'; '.join(failed)}", "error")
+        else:
+            flash(f"Copied {copied} contacts.", "success")
         return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
 
     flash("Choose a bulk action.", "error")
@@ -1541,6 +1915,7 @@ def profile_new_contact(profile_id, collection_path):
                 filename = f"{fields.get('uid') or uuid.uuid4()}.vcf"
                 client.put_contact(collection_path, filename, raw_vcard + "\n")
                 update_cached_contact_count(profile_id, collection_path, None)
+                log_event("create", profile_id=profile_id, collection_path=collection_path, contact_filename=filename, details={"mode": "raw"})
                 flash("Contact created.", "success")
                 return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=filename))
             except Exception as exc:
@@ -1581,6 +1956,7 @@ def profile_new_contact(profile_id, collection_path):
             new_vcard = build_vcard_from_fields(fields)
             client.put_contact(collection_path, filename, new_vcard)
             update_cached_contact_count(profile_id, collection_path, None)
+            log_event("create", profile_id=profile_id, collection_path=collection_path, contact_filename=filename, details={"mode": "structured"})
             flash("Contact created.", "success")
             return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=filename))
         except Exception as exc:
@@ -1661,12 +2037,139 @@ def profile_export_addressbook(profile_id, collection_path):
             flash("No contacts available to export.", "error")
             return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
         filename = f"radicale-{collection_path.replace('/', '_')}-{datetime.now(timezone.utc).date()}.vcf"
+        log_event("addressbook_export", profile_id=profile_id, collection_path=collection_path)
         buffer = BytesIO(content.encode("utf-8"))
         return send_file(buffer, download_name=filename, mimetype="text/vcard", as_attachment=True)
     except Exception as exc:
         app.logger.exception("Export failed for profile %s book %s", profile_id, collection_path)
         flash(f"Export failed: {exc}", "error")
         return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/export")
+def profile_export_contact(profile_id, collection_path, contact_filename):
+    try:
+        client = get_client_for_profile(profile_id)
+        vcard_text, _etag = client.get_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
+        log_event("contact_export", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename)
+        return send_file(
+            BytesIO((vcard_text.strip() + "\n").encode("utf-8")),
+            download_name=contact_filename,
+            mimetype="text/vcard",
+            as_attachment=True,
+        )
+    except Exception as exc:
+        app.logger.exception("Contact export failed")
+        flash(f"Contact export failed: {exc}", "error")
+        return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
+
+
+@app.route("/profiles/<int:profile_id>/export")
+def profile_export_connection(profile_id):
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    books = credential_store.get_cached_address_books(profile_id) or []
+    blocks = []
+    failed = []
+    for book in books:
+        path = book.get("path")
+        if not path:
+            continue
+        try:
+            content = client.export_addressbook(path)
+            if content.strip():
+                blocks.append(content.strip())
+        except Exception as exc:
+            failed.append(f"{path}: {exc}")
+    if not blocks:
+        flash(f"No contacts exported. {'; '.join(failed)}", "error")
+        return redirect(url_for("connections"))
+    if failed:
+        flash(f"Exported connection with warnings: {'; '.join(failed)}", "error")
+    log_event("connection_export", profile_id=profile_id, details={"books": len(books), "failed": len(failed)})
+    content = "\n".join(blocks) + "\n"
+    return send_file(
+        BytesIO(content.encode("utf-8")),
+        download_name=f"radicale-{profile.get('name', 'connection')}-{datetime.now(timezone.utc).date()}.vcf",
+        mimetype="text/vcard",
+        as_attachment=True,
+    )
+
+
+@app.route("/profiles/<int:profile_id>/backup")
+def profile_backup_export(profile_id):
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+
+    books = credential_store.get_cached_address_books(profile_id) or []
+    archive = BytesIO()
+    metadata = {
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "profile": {
+            "id": profile.get("id"),
+            "name": profile.get("name"),
+            "server_url": profile.get("server_url"),
+            "username": profile.get("username"),
+            "group_name": profile.get("group_name", ""),
+            "tags": profile.get("tags", []),
+        },
+        "books": [],
+    }
+    with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for book in books:
+            normalized = normalize_book_for_template(book)
+            path = normalized["path"]
+            safe_name = path.replace("/", "_")
+            try:
+                exported = client.export_addressbook(path)
+                if exported.strip():
+                    zf.writestr(f"AddressBooks/{safe_name}.vcf", exported)
+                listed = client.list_contacts(path)
+                contact_files = []
+                for item in listed:
+                    filename = get_contact_filename(item.get("href")) or f"{uuid.uuid4()}.vcf"
+                    contact_files.append(filename)
+                    zf.writestr(f"Contacts/{safe_name}/{filename}", item["vcard"].strip() + "\n")
+                metadata["books"].append(
+                    {
+                        "display_name": normalized["display_name"],
+                        "path": path,
+                        "contact_count": len(contact_files),
+                        "files": contact_files,
+                        "last_seen_at": normalized.get("last_seen_at"),
+                    }
+                )
+            except Exception as exc:
+                metadata["books"].append(
+                    {"display_name": normalized["display_name"], "path": path, "error": str(exc)}
+                )
+        zf.writestr("Metadata/connection.json", json.dumps(metadata, indent=2))
+        zf.writestr(
+            "Metadata/recent_events.json",
+            json.dumps(credential_store.get_recent_events(limit=200), indent=2),
+        )
+    archive.seek(0)
+    log_event("backup_export", profile_id=profile_id, details={"books": len(books)})
+    return send_file(
+        archive,
+        download_name=f"radicale-backup-{profile.get('name', 'connection')}-{datetime.now(timezone.utc).date()}.zip",
+        mimetype="application/zip",
+        as_attachment=True,
+    )
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/edit", methods=["GET", "POST"])
@@ -1702,12 +2205,15 @@ def profile_edit_contact(profile_id, collection_path, contact_filename):
                         profile_id=profile_id,
                     )
                 client.put_contact(collection_path, contact_filename, raw_vcard + "\n", if_match=etag)
+                log_event("edit", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename, details={"mode": "raw"})
                 flash("Contact saved.", "success")
                 return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
             values = contact_fields_from_form(fields.get("uid"))
             values["uid"] = fields.get("uid") or values.get("uid")
             new_vcard = build_vcard_from_fields(values)
+            new_vcard = merge_unknown_fields_into_vcard(vcard_text, new_vcard)
             client.put_contact(collection_path, contact_filename, new_vcard, if_match=etag)
+            log_event("edit", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename)
             flash("Contact saved.", "success")
             return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
         return render_template(
@@ -1737,6 +2243,7 @@ def profile_delete_contact(profile_id, collection_path, contact_filename):
     contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
     try:
         client.delete_contact(contact_href)
+        log_event("delete", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename)
         flash("Contact deleted.", "success")
     except Exception as exc:
         app.logger.exception("Delete failed for contact %s", contact_href)
@@ -1797,6 +2304,13 @@ def profile_copy_contact(profile_id, collection_path, contact_filename):
         dest_client = get_client_for_profile(dest_profile_id)
         dest_client.put_contact(dest_path, contact_filename, vcard_text)
         update_cached_contact_count(dest_profile_id, dest_path, None)
+        log_event(
+            "copy",
+            profile_id=profile_id,
+            collection_path=collection_path,
+            contact_filename=contact_filename,
+            details={"dest_profile_id": dest_profile_id, "dest_path": dest_path},
+        )
         flash("Contact copied successfully.", "success")
     except Exception as exc:
         app.logger.exception("Copy failed")
@@ -1813,6 +2327,13 @@ def profile_duplicate_contact(profile_id, collection_path, contact_filename):
         new_filename = f"{new_uid}.vcf"
         client.put_contact(collection_path, new_filename, copied_vcard)
         update_cached_contact_count(profile_id, collection_path, None)
+        log_event(
+            "duplicate",
+            profile_id=profile_id,
+            collection_path=collection_path,
+            contact_filename=new_filename,
+            details={"source_filename": contact_filename},
+        )
         flash("Contact duplicated.", "success")
         return redirect(
             url_for(
@@ -1853,6 +2374,13 @@ def profile_move_contact(profile_id, collection_path, contact_filename):
         src_client.delete_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
         update_cached_contact_count(profile_id, collection_path, None)
         update_cached_contact_count(dest_profile_id, dest_path, None)
+        log_event(
+            "move",
+            profile_id=profile_id,
+            collection_path=collection_path,
+            contact_filename=contact_filename,
+            details={"dest_profile_id": dest_profile_id, "dest_path": dest_path},
+        )
         flash("Contact moved successfully.", "success")
         return redirect(url_for("profile_view_contact", profile_id=dest_profile_id, collection_path=dest_path, contact_filename=contact_filename))
     except Exception as exc:
@@ -2066,3 +2594,4 @@ if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes", "on")
     extra_files = [".env"] if debug and os.path.exists(".env") else None
     app.run(host="0.0.0.0", port=port, debug=debug, extra_files=extra_files)
+

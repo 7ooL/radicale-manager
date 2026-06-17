@@ -227,6 +227,26 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIsNone(counts["demo/source"])
         self.assertIsNone(counts["demo/dest"])
 
+    def test_bulk_copy_keeps_source_and_invalidates_destination_count(self):
+        response = self.client.post(
+            f"/profiles/{self.profile_id}/books/demo/source/contacts/bulk",
+            data={
+                "bulk_action": "copy",
+                "dest": f"{self.profile_id}::demo/dest",
+                "contact_filename": ["contact-1.vcf", "contact-2.vcf"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("demo/source/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("demo/source/contact-2.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("demo/dest/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("demo/dest/contact-2.vcf", FakeRadicaleClient.contacts)
+        books = self.store.get_cached_address_books(self.profile_id)
+        counts = {book["path"]: book["contact_count"] for book in books}
+        self.assertEqual(counts["demo/source"], 1)
+        self.assertIsNone(counts["demo/dest"])
+
     def test_global_contacts_lists_contacts_with_book_context_and_actions(self):
         response = self.client.get("/contacts")
 
@@ -271,6 +291,13 @@ class MainRoutesTest(unittest.TestCase):
         }
         self.assertIsNone(demo_counts["demo/source"])
         self.assertIsNone(family_counts["family/shared"])
+
+    def test_global_search_filters_by_profile_and_query(self):
+        response = self.client.get(f"/contacts?profile_id={self.profile_id}&has_email=1&q=second")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Second Contact", response.data)
+        self.assertNotIn(b"Demo Contact", response.data)
 
 
 if __name__ == "__main__":

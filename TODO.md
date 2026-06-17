@@ -25,10 +25,10 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Connection testing
 - [x] Connection health/status
 - [x] Connection editing UI
-- [ ] Credential encryption verification and setup guidance
-- [ ] Profile export/import
-- [ ] Connection grouping
-- [ ] Connection tags
+- [x] Credential encryption verification and setup guidance
+- [x] Profile export/import
+- [x] Connection grouping
+- [x] Connection tags
 
 ### Address Book Management
 
@@ -36,9 +36,9 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Rename address book
 - [x] Delete address book
 - [x] Refresh address books
-- [ ] Address book statistics
+- [x] Address book statistics
 - [x] Contact counts
-- [ ] Last modified information
+- [x] Last modified information
 
 ### Contact Management
 
@@ -47,9 +47,9 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Raw vCard view
 - [x] Basic field editing
 - [x] Raw vCard editing
-- [ ] Preserve unknown fields during form-based editing
-- [ ] Multi-value phone editing
-- [ ] Multi-value email editing
+- [x] Preserve unknown fields during form-based editing
+- [x] Multi-value phone editing
+- [x] Multi-value email editing
 - [x] Copy contact
 - [x] Move contact
 - [x] Delete contact
@@ -60,7 +60,7 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Multi-select contacts in list
 - [x] Bulk delete
 - [x] Bulk move
-- [ ] Bulk copy
+- [x] Bulk copy
 - [x] Bulk export
 
 ### Import / Export
@@ -68,34 +68,34 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Single VCF import
 - [x] Multi-contact VCF import
 - [x] Address book import
-- [ ] Single contact export
+- [x] Single contact export
 - [x] Address book export
-- [ ] Entire connection export
-- [ ] Backup ZIP export with AddressBooks, Contacts, and Metadata folders
+- [x] Entire connection export
+- [x] Backup ZIP export with AddressBooks, Contacts, and Metadata folders
 
 ### Contact Search
 
 - [x] Address-book live filter
 - [x] Sort by contact list columns
 - [x] Global contact view across all connections and books
-- [ ] Global search across all connections and books
-- [ ] Search by name, email, phone, and company
-- [ ] Filters by connection and address book
-- [ ] Filters for has email and has phone
-- [ ] Recently modified filter
+- [x] Global search across all connections and books
+- [x] Search by name, email, phone, and company
+- [x] Filters by connection and address book
+- [x] Filters for has email and has phone
+- [x] Recently modified filter
 
 ### Dashboard Improvements
 
 - [x] Total connections
 - [x] Total address books
 - [x] Total contacts
-- [ ] Recent imports
-- [ ] Recent exports
-- [ ] Recent moves
-- [ ] Recent deletes
+- [x] Recent imports
+- [x] Recent exports
+- [x] Recent moves
+- [x] Recent deletes
 - [x] App health
-- [ ] Connection health rollup
-- [ ] Backup health
+- [x] Connection health rollup
+- [x] Backup health
 
 ## Phase 3 - Contact Intelligence
 

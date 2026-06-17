@@ -7,6 +7,12 @@
         <div class="field-row"><strong>Connections</strong><span>{{ metrics.total_connections }}</span></div>
         <div class="field-row"><strong>Address Books</strong><span>{{ metrics.total_address_books }}</span></div>
         <div class="field-row"><strong>Contacts</strong><span>{{ metrics.total_contacts }}</span></div>
+        <div class="field-row"><strong>Recent Imports (7d)</strong><span>{{ metrics.recent_imports }}</span></div>
+        <div class="field-row"><strong>Recent Exports (7d)</strong><span>{{ metrics.recent_exports }}</span></div>
+        <div class="field-row"><strong>Recent Moves (7d)</strong><span>{{ metrics.recent_moves }}</span></div>
+        <div class="field-row"><strong>Recent Deletes (7d)</strong><span>{{ metrics.recent_deletes }}</span></div>
+        <div class="field-row"><strong>Connection Health</strong><span>{{ metrics.connection_health.healthy }} healthy / {{ metrics.connection_health.unhealthy }} unhealthy</span></div>
+        <div class="field-row"><strong>Backup Health</strong><span>{{ metrics.backup_health.status }}{% if metrics.backup_health.last_backup_at %} (last backup {{ metrics.backup_health.last_backup_at }}){% endif %}</span></div>
         <div class="field-row"><strong>Duplicates</strong><span>{% if metrics.duplicates is none %}Not scanned{% else %}{{ metrics.duplicates }}{% endif %}</span></div>
         <div class="field-row"><strong>Issues</strong><span>{{ metrics.issues }}</span></div>
       </div>
@@ -33,6 +39,10 @@
                       <strong>Contacts</strong>
                       <span>{% if book.contact_count is not none %}{{ book.contact_count }}{% else %}unknown{% endif %}</span>
                     </div>
+                    <div class="meta-row">
+                      <strong>Last Modified</strong>
+                      <span>{{ book.last_seen_at or 'unknown' }}</span>
+                    </div>
                   </div>
                   <div class="button-row">
                     <a class="button" href="{{ url_for('profile_view_contacts', profile_id=profile.id, collection_path=book.path) }}">View</a>
@@ -49,6 +59,23 @@
       {% endfor %}
     {% else %}
       <p>No enabled connection profiles found. Add one on the Connections page.</p>
+    {% endif %}
+    {% if recent_events %}
+      <section class="profile-block">
+        <h2>Recent Activity</h2>
+        <ul class="managed-book-list">
+          {% for event in recent_events %}
+            <li>
+              <div class="managed-book-main">
+                <strong>{{ event.action }}</strong>
+                <span class="muted">{{ event.created_at }}</span>
+                {% if event.collection_path %}<span class="muted">{{ event.collection_path }}</span>{% endif %}
+                {% if event.contact_filename %}<span class="muted">{{ event.contact_filename }}</span>{% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
     {% endif %}
   </div>
 {% endblock %}

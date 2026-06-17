@@ -24,6 +24,16 @@
         <small>This name is used in the dashboard, navigation, and migration targets.</small>
       </label>
 
+      <label>
+        Group
+        <input type="text" name="group_name" value="{{ form.group_name or '' }}" placeholder="Home, Work, Clients..." />
+      </label>
+
+      <label>
+        Tags (comma separated)
+        <input type="text" name="tags" value="{{ form.tags or '' }}" placeholder="personal,critical,migration" />
+      </label>
+
       <label class="checkbox-label">
         <input type="checkbox" name="enabled" {% if form.enabled %}checked{% endif %}/> Enabled
       </label>

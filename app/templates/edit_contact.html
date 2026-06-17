@@ -32,26 +32,40 @@
         Birthday
         <input type="text" name="birthday" value="{{ fields.birthday }}" placeholder="YYYY-MM-DD" />
       </label>
-      <label>
-        Email addresses (comma separated)
-        <input type="text" name="emails" value="{{ fields.emails|join(', ') }}" />
-      </label>
-      <label>
-        Phone numbers (comma separated)
-        <input type="text" name="phones" value="{{ fields.phones|join(', ') }}" />
-      </label>
+      <label>Email addresses</label>
+      <div id="email-list" class="grid-list">
+        {% for email in fields.emails or [''] %}
+          <input type="text" name="emails" value="{{ email }}" placeholder="name@example.com" />
+        {% endfor %}
+      </div>
+      <button class="button small secondary" type="button" id="add-email">Add Email</button>
+
+      <label>Phone numbers</label>
+      <div id="phone-list" class="grid-list">
+        {% for phone in fields.phones or [''] %}
+          <input type="text" name="phones" value="{{ phone }}" placeholder="+1 555 0100" />
+        {% endfor %}
+      </div>
+      <button class="button small secondary" type="button" id="add-phone">Add Phone</button>
       <label>
         Postal address
         <textarea name="address">{{ fields.address }}</textarea>
       </label>
-      <label>
-        Websites (comma separated)
-        <input type="text" name="urls" value="{{ fields.urls|join(', ') }}" />
-      </label>
-      <label>
-        Categories (comma separated)
-        <input type="text" name="categories" value="{{ fields.categories|join(', ') }}" />
-      </label>
+      <label>Websites</label>
+      <div id="url-list" class="grid-list">
+        {% for url in fields.urls or [''] %}
+          <input type="text" name="urls" value="{{ url }}" placeholder="https://example.com" />
+        {% endfor %}
+      </div>
+      <button class="button small secondary" type="button" id="add-url">Add URL</button>
+
+      <label>Categories</label>
+      <div id="category-list" class="grid-list">
+        {% for category in fields.categories or [''] %}
+          <input type="text" name="categories" value="{{ category }}" placeholder="Friends" />
+        {% endfor %}
+      </div>
+      <button class="button small secondary" type="button" id="add-category">Add Category</button>
       <label>
         Notes
         <textarea name="note">{{ fields.note }}</textarea>
@@ -59,7 +73,7 @@
       <label>
         Raw vCard
         <textarea name="raw_vcard" class="raw-view">{{ raw_vcard }}</textarea>
-        <small>Use Save raw vCard for advanced fields not represented above.</small>
+        <small>Unknown vCard fields are preserved when saving structured fields.</small>
       </label>
       <div class="button-row">
         <button type="submit" name="save_mode" value="structured">{% if is_new %}Create contact{% else %}Save fields{% endif %}</button>
@@ -68,4 +82,25 @@
       </div>
     </form>
   </div>
+  <script>
+    (() => {
+      const addInput = (containerId, buttonId, placeholder = '') => {
+        const container = document.getElementById(containerId);
+        const button = document.getElementById(buttonId);
+        if (!container || !button) return;
+        button.addEventListener('click', () => {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.name = container.querySelector('input')?.name || '';
+          input.placeholder = placeholder;
+          container.appendChild(input);
+          input.focus();
+        });
+      };
+      addInput('email-list', 'add-email', 'name@example.com');
+      addInput('phone-list', 'add-phone', '+1 555 0100');
+      addInput('url-list', 'add-url', 'https://example.com');
+      addInput('category-list', 'add-category', 'Friends');
+    })();
+  </script>
 {% endblock %}

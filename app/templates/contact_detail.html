@@ -8,6 +8,7 @@
       </div>
       <div class="detail-actions">
         <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
+        <a class="button small secondary" href="{{ url_for('profile_export_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Export</a>
         <a class="button small secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Back to list</a>
         <form method="post" action="{{ url_for('profile_duplicate_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
           <button class="button small" type="submit">Duplicate</button>

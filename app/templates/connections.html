@@ -2,16 +2,38 @@
 {% block content %}
   <div class="card">
     <h1>Connections</h1>
-    <a class="button" href="{{ url_for('new_connection') }}">New Connection</a>
+    <div class="button-row">
+      <a class="button" href="{{ url_for('new_connection') }}">New Connection</a>
+      <a class="button secondary" href="{{ url_for('export_connections') }}">Export Profiles</a>
+    </div>
+    <form class="inline-action-form" method="post" action="{{ url_for('import_connections') }}" enctype="multipart/form-data">
+      <label>
+        Import profiles
+        <input type="file" name="connections_file" accept=".json,application/json" required />
+      </label>
+      <button class="button small" type="submit">Import</button>
+    </form>
+    {% if security %}
+      <div class="summary-card">
+        <h2>Credential Security</h2>
+        <div class="field-row"><span class="field-label">Encryption library</span><span>{{ 'Ready' if security.fernet_available else 'Missing (install cryptography)' }}</span></div>
+        <div class="field-row"><span class="field-label">Profile secret</span><span>{{ 'Configured' if security.secret_configured else 'Not configured' }}</span></div>
+        <div class="field-row"><span class="field-label">Status</span><span>{{ 'Encrypted at rest' if security.encryption_enabled else 'Plaintext fallback' }}</span></div>
+        {% if security.guidance %}<p class="muted compact">{{ security.guidance }}</p>{% endif %}
+      </div>
+    {% endif %}
     {% if profiles %}
       <div class="list">
         {% for p in profiles %}
           <div class="list-item">
             <h3>{{ p.name }} {% if not p.enabled %}<span class="muted">(disabled)</span>{% endif %}</h3>
             <p>{{ p.server_url }} — {{ p.username }}</p>
+            <p>Group: {{ p.group_name or 'Ungrouped' }}{% if p.tags %} — Tags: {{ p.tags|join(', ') }}{% endif %}</p>
             <p>Last success: {{ p.last_successful_connect_at or 'never' }} &nbsp; Last error: {{ p.last_error or 'none' }}</p>
             <div class="button-row">
               <a class="button small" href="{{ url_for('edit_connection', profile_id=p.id) }}">Edit</a>
+              <a class="button small secondary" href="{{ url_for('profile_export_connection', profile_id=p.id) }}">Export Connection</a>
+              <a class="button small secondary" href="{{ url_for('profile_backup_export', profile_id=p.id) }}">Backup ZIP</a>
               <form method="post" action="{{ url_for('test_connection', profile_id=p.id) }}" style="display:inline">
                 <button class="button small">Test</button>
               </form>
@@ -36,6 +58,8 @@
                     <div class="managed-book-main">
                       <strong>{{ b.display_name }}</strong>
                       <span class="muted">{{ b.path }}</span>
+                      <span class="muted">Contacts: {{ b.contact_count if b.contact_count is not none else 'unknown' }}</span>
+                      <span class="muted">Last modified: {{ b.last_seen_at or 'unknown' }}</span>
                     </div>
                     <form class="inline-action-form" method="post" action="{{ url_for('rename_addressbook', profile_id=p.id, collection_path=b.path) }}">
                       <input type="text" name="display_name" value="{{ b.display_name }}" required />

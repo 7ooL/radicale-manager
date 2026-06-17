@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+import json
 from contextlib import closing
 from datetime import datetime, timezone
 
@@ -63,6 +64,8 @@ class CredentialStore:
                     server_url TEXT NOT NULL,
                     username TEXT NOT NULL,
                     password_encrypted TEXT,
+                    group_name TEXT DEFAULT '',
+                    tags TEXT DEFAULT '',
                     enabled INTEGER DEFAULT 1,
                     created_at TEXT,
                     updated_at TEXT,
@@ -98,8 +101,32 @@ class CredentialStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS operations_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    action TEXT NOT NULL,
+                    profile_id INTEGER,
+                    collection_path TEXT,
+                    contact_filename TEXT,
+                    details_json TEXT,
+                    source TEXT DEFAULT 'system',
+                    created_at TEXT
+                )
+                """
+            )
+            self._ensure_column(conn, "connection_profiles", "group_name", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "connection_profiles", "tags", "TEXT DEFAULT ''")
             conn.commit()
         LOGGER.debug("CredentialStore database initialized")
+
+    def _ensure_column(self, conn, table, column, definition):
+        existing = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def _encrypt(self, text):
         if text is None:
@@ -120,20 +147,21 @@ class CredentialStore:
             return text
 
     # Profile CRUD
-    def create_profile(self, name, server_url, username, password=None, enabled=True):
+    def create_profile(self, name, server_url, username, password=None, enabled=True, group_name="", tags=None):
         now = _utc_now()
         encrypted = self._encrypt(password) if password else None
+        tags_text = ",".join(tags or []) if isinstance(tags, list) else (tags or "")
         with closing(self._connect()) as conn:
             cur = conn.execute(
-                "INSERT INTO connection_profiles (name, server_url, username, password_encrypted, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (name, server_url, username, encrypted, 1 if enabled else 0, now, now),
+                "INSERT INTO connection_profiles (name, server_url, username, password_encrypted, group_name, tags, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, server_url, username, encrypted, group_name or "", tags_text, 1 if enabled else 0, now, now),
             )
             conn.commit()
             profile_id = cur.lastrowid
         LOGGER.info("Created profile %s (%s)", name, profile_id)
         return profile_id
 
-    def update_profile(self, profile_id, name=None, server_url=None, username=None, password=None, enabled=None):
+    def update_profile(self, profile_id, name=None, server_url=None, username=None, password=None, enabled=None, group_name=None, tags=None):
         now = _utc_now()
         fields = []
         params = []
@@ -149,6 +177,13 @@ class CredentialStore:
         if password is not None:
             fields.append("password_encrypted = ?")
             params.append(self._encrypt(password))
+        if group_name is not None:
+            fields.append("group_name = ?")
+            params.append(group_name or "")
+        if tags is not None:
+            tags_text = ",".join(tags or []) if isinstance(tags, list) else (tags or "")
+            fields.append("tags = ?")
+            params.append(tags_text)
         if enabled is not None:
             fields.append("enabled = ?")
             params.append(1 if enabled else 0)
@@ -171,28 +206,32 @@ class CredentialStore:
     def get_profile(self, profile_id):
         with closing(self._connect()) as conn:
             row = conn.execute(
-                "SELECT id, name, server_url, username, password_encrypted, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles WHERE id = ?",
+                "SELECT id, name, server_url, username, password_encrypted, group_name, tags, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles WHERE id = ?",
                 (profile_id,),
             ).fetchone()
             if not row:
                 return None
+            tags_text = row[6] or ""
             return {
                 "id": row[0],
                 "name": row[1],
                 "server_url": row[2],
                 "username": row[3],
                 "password": self._decrypt(row[4]) if row[4] else None,
-                "enabled": bool(row[5]),
-                "created_at": row[6],
-                "updated_at": row[7],
-                "last_successful_connect_at": row[8],
-                "last_error": row[9],
+                "group_name": row[5] or "",
+                "tags": [part.strip() for part in tags_text.split(",") if part.strip()],
+                "tags_text": tags_text,
+                "enabled": bool(row[7]),
+                "created_at": row[8],
+                "updated_at": row[9],
+                "last_successful_connect_at": row[10],
+                "last_error": row[11],
             }
 
     def get_profiles(self):
         with closing(self._connect()) as conn:
             cursor = conn.execute(
-                "SELECT id, name, server_url, username, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles ORDER BY name"
+                "SELECT id, name, server_url, username, group_name, tags, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles ORDER BY group_name, name"
             )
             rows = cursor.fetchall()
             profiles = [
@@ -201,11 +240,14 @@ class CredentialStore:
                     "name": r[1],
                     "server_url": r[2],
                     "username": r[3],
-                    "enabled": bool(r[4]),
-                    "created_at": r[5],
-                    "updated_at": r[6],
-                    "last_successful_connect_at": r[7],
-                    "last_error": r[8],
+                    "group_name": r[4] or "",
+                    "tags": [part.strip() for part in (r[5] or "").split(",") if part.strip()],
+                    "tags_text": r[5] or "",
+                    "enabled": bool(r[6]),
+                    "created_at": r[7],
+                    "updated_at": r[8],
+                    "last_successful_connect_at": r[9],
+                    "last_error": r[10],
                 }
                 for r in rows
             ]
@@ -214,7 +256,7 @@ class CredentialStore:
     def get_enabled_profiles(self):
         with closing(self._connect()) as conn:
             cursor = conn.execute(
-                "SELECT id, name, server_url, username, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles WHERE enabled = 1 ORDER BY name"
+                "SELECT id, name, server_url, username, group_name, tags, enabled, created_at, updated_at, last_successful_connect_at, last_error FROM connection_profiles WHERE enabled = 1 ORDER BY group_name, name"
             )
             rows = cursor.fetchall()
             profiles = [
@@ -223,11 +265,14 @@ class CredentialStore:
                     "name": r[1],
                     "server_url": r[2],
                     "username": r[3],
-                    "enabled": bool(r[4]),
-                    "created_at": r[5],
-                    "updated_at": r[6],
-                    "last_successful_connect_at": r[7],
-                    "last_error": r[8],
+                    "group_name": r[4] or "",
+                    "tags": [part.strip() for part in (r[5] or "").split(",") if part.strip()],
+                    "tags_text": r[5] or "",
+                    "enabled": bool(r[6]),
+                    "created_at": r[7],
+                    "updated_at": r[8],
+                    "last_successful_connect_at": r[9],
+                    "last_error": r[10],
                 }
                 for r in rows
             ]
@@ -328,3 +373,73 @@ class CredentialStore:
                 )
             conn.commit()
         LOGGER.debug("Updated connection status for %s success=%s", profile_id, success)
+
+    # Operations log
+    def add_event(
+        self,
+        action,
+        profile_id=None,
+        collection_path=None,
+        contact_filename=None,
+        details=None,
+        source="system",
+    ):
+        now = _utc_now()
+        details_json = json.dumps(details or {}, ensure_ascii=True)
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "INSERT INTO operations_log (action, profile_id, collection_path, contact_filename, details_json, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (action, profile_id, collection_path, contact_filename, details_json, source, now),
+            )
+            conn.commit()
+
+    def get_recent_events(self, limit=20, actions=None):
+        query = "SELECT id, action, profile_id, collection_path, contact_filename, details_json, source, created_at FROM operations_log"
+        params = []
+        if actions:
+            placeholders = ",".join("?" for _ in actions)
+            query += f" WHERE action IN ({placeholders})"
+            params.extend(actions)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query, params).fetchall()
+        events = []
+        for row in rows:
+            try:
+                details = json.loads(row[5] or "{}")
+            except Exception:
+                details = {}
+            events.append(
+                {
+                    "id": row[0],
+                    "action": row[1],
+                    "profile_id": row[2],
+                    "collection_path": row[3],
+                    "contact_filename": row[4],
+                    "details": details,
+                    "source": row[6],
+                    "created_at": row[7],
+                }
+            )
+        return events
+
+    def count_recent_events(self, action, since_iso):
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM operations_log WHERE action = ? AND created_at >= ?",
+                (action, since_iso),
+            ).fetchone()
+        return int(row[0] or 0)
+
+    def get_recent_contact_keys(self, since_iso, actions=None):
+        query = "SELECT DISTINCT profile_id, collection_path, contact_filename FROM operations_log WHERE created_at >= ?"
+        params = [since_iso]
+        if actions:
+            placeholders = ",".join("?" for _ in actions)
+            query += f" AND action IN ({placeholders})"
+            params.extend(actions)
+        query += " AND profile_id IS NOT NULL AND collection_path IS NOT NULL AND contact_filename IS NOT NULL"
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [(row[0], row[1], row[2]) for row in rows]
