@@ -1,0 +1,56 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:demo-alex-rivera
+FN:Alex Rivera
+N:Rivera;Alex;;;
+ORG:Northstar Studio
+TITLE:Operations Lead
+EMAIL;TYPE=INTERNET:alex.rivera@example.test
+TEL;TYPE=CELL:555-0101
+ADR;TYPE=WORK:;;100 Market Street;Springfield;IL;62701;USA
+NOTE:Demo contact for Radicale Manager development.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+UID:demo-brianna-chen
+FN:Brianna Chen
+N:Chen;Brianna;;;
+ORG:Atlas Health
+TITLE:Project Manager
+EMAIL;TYPE=INTERNET:brianna.chen@example.test
+TEL;TYPE=WORK:555-0102
+URL:https://example.test/atlas
+CATEGORIES:Work,Vendor
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+UID:demo-cameron-price
+FN:Cameron Price
+N:Price;Cameron;;;
+ORG:Greenline Supply
+TITLE:Account Representative
+EMAIL;TYPE=INTERNET:cameron.price@example.test
+TEL;TYPE=VOICE:555-0103
+NOTE:Preferred demo vendor contact.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+UID:demo-drew-morgan
+FN:Drew Morgan
+N:Morgan;Drew;;;
+EMAIL;TYPE=INTERNET:drew.morgan@example.test
+TEL;TYPE=CELL:555-0104
+CATEGORIES:Personal
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+UID:demo-ellis-patel
+FN:Ellis Patel
+N:Patel;Ellis;;;
+ORG:Beacon Labs
+TITLE:Engineer
+EMAIL;TYPE=INTERNET:ellis.patel@example.test
+TEL;TYPE=WORK:555-0105
+ADR;TYPE=WORK:;;42 Research Way;Madison;WI;53703;USA
+URL:https://example.test/beacon
+END:VCARD

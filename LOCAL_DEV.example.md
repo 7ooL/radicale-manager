@@ -48,7 +48,7 @@ python app\main.py
 Run tests:
 
 ```powershell
-python -m unittest discover -s app
+python -m unittest discover -s tests
 ```
 
 ## Local Data

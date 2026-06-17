@@ -46,7 +46,7 @@ http://localhost:5000
 Run tests:
 
 ```powershell
-python -m unittest discover -s app
+python -m unittest discover -s tests
 ```
 
 For a fuller local setup guide, see [LOCAL_DEV.example.md](LOCAL_DEV.example.md).

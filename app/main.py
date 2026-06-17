@@ -1474,6 +1474,7 @@ def profile_copy_contact(profile_id, collection_path, contact_filename):
         vcard_text, etag = src_client.get_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
         dest_client = get_client_for_profile(dest_profile_id)
         dest_client.put_contact(dest_path, contact_filename, vcard_text)
+        update_cached_contact_count(dest_profile_id, dest_path, None)
         flash("Contact copied successfully.", "success")
     except Exception as exc:
         app.logger.exception("Copy failed")
@@ -1528,11 +1529,14 @@ def profile_move_contact(profile_id, collection_path, contact_filename):
         dest_client.put_contact(dest_path, contact_filename, vcard_text)
         # If put succeeded, delete source
         src_client.delete_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
+        update_cached_contact_count(profile_id, collection_path, None)
+        update_cached_contact_count(dest_profile_id, dest_path, None)
         flash("Contact moved successfully.", "success")
+        return redirect(url_for("profile_view_contact", profile_id=dest_profile_id, collection_path=dest_path, contact_filename=contact_filename))
     except Exception as exc:
         app.logger.exception("Move failed")
         flash(f"Move failed: {exc}", "error")
-    return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
+        return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
 
 
 @app.route("/books/<path:collection_path>/contacts")
