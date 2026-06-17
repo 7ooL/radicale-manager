@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="card form-card">
-    <h1>Edit Contact</h1>
+    <h1>{{ form_title or 'Edit Contact' }}</h1>
     <p class="muted">{{ book.name }} / {{ contact.filename }}</p>
     <form method="POST">
       <label>
@@ -62,7 +62,7 @@
         <small>Use Save raw vCard for advanced fields not represented above.</small>
       </label>
       <div class="button-row">
-        <button type="submit" name="save_mode" value="structured">Save fields</button>
+        <button type="submit" name="save_mode" value="structured">{% if is_new %}Create contact{% else %}Save fields{% endif %}</button>
         <button class="button secondary" type="submit" name="save_mode" value="raw">Save raw vCard</button>
         <a class="button secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Cancel</a>
       </div>

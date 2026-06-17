@@ -4,6 +4,7 @@
     <h1>Contacts in {{ book.name }}</h1>
     <p class="muted">{{ book.path }}</p>
     <div class="button-row">
+      <a class="button" href="{{ url_for('profile_new_contact', profile_id=profile_id, collection_path=book.path) }}">Add Contact</a>
       <a class="button secondary" href="{{ url_for('profile_contact_quality', profile_id=profile_id, collection_path=book.path) }}">Quality Scan</a>
       <a class="button secondary" href="{{ url_for('profile_export_addressbook', profile_id=profile_id, collection_path=book.path) }}">Export Book</a>
     </div>
@@ -65,6 +66,7 @@
       <p class="muted hidden" id="no-contact-results">No contacts match that filter.</p>
     {% else %}
       <p>No contacts found in this address book.</p>
+      <a class="button" href="{{ url_for('profile_new_contact', profile_id=profile_id, collection_path=book.path) }}">Add the first contact</a>
     {% endif %}
   </div>
 

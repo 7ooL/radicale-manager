@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timezone
 from io import BytesIO
 import re
+import uuid
 from dotenv import load_dotenv
 from flask import (
     Flask,
@@ -116,6 +117,7 @@ def build_navigation(current_endpoint=None):
                             in (
                                 "profile_view_contacts",
                                 "profile_view_contact",
+                                "profile_new_contact",
                                 "profile_edit_contact",
                                 "profile_contact_quality",
                                 "profile_import_vcf",
@@ -173,6 +175,8 @@ def build_breadcrumbs(endpoint, view_args):
             )
             if endpoint == "profile_view_contact":
                 crumbs.append({"name": "Contact", "url": None})
+            elif endpoint == "profile_new_contact":
+                crumbs.append({"name": "New Contact", "url": None})
             elif endpoint == "profile_edit_contact":
                 crumbs.append({"name": "Edit Contact", "url": None})
             elif endpoint == "profile_import_vcf":
@@ -427,6 +431,44 @@ def build_duplicate_report(contacts):
     return {"duplicates": duplicate_groups, "issues": issues}
 
 
+def empty_contact_fields():
+    return {
+        "uid": "",
+        "full_name": "",
+        "first_name": "",
+        "last_name": "",
+        "nickname": "",
+        "organization": "",
+        "job_title": "",
+        "birthday": "",
+        "address": "",
+        "note": "",
+        "emails": [],
+        "phones": [],
+        "urls": [],
+        "categories": [],
+    }
+
+
+def contact_fields_from_form(existing_uid=None):
+    return {
+        "uid": existing_uid,
+        "full_name": request.form.get("full_name", "").strip(),
+        "first_name": request.form.get("first_name", "").strip(),
+        "last_name": request.form.get("last_name", "").strip(),
+        "nickname": request.form.get("nickname", "").strip(),
+        "organization": request.form.get("organization", "").strip(),
+        "job_title": request.form.get("job_title", "").strip(),
+        "birthday": request.form.get("birthday", "").strip(),
+        "address": request.form.get("address", "").strip(),
+        "note": request.form.get("note", "").strip(),
+        "emails": [email.strip() for email in request.form.get("emails", "").split(",") if email.strip()],
+        "phones": [phone.strip() for phone in request.form.get("phones", "").split(",") if phone.strip()],
+        "urls": [url.strip() for url in request.form.get("urls", "").split(",") if url.strip()],
+        "categories": [category.strip() for category in request.form.get("categories", "").split(",") if category.strip()],
+    }
+
+
 def make_client():
     """Build a RadicaleClient from the active session connection."""
     active = get_active_connection()
@@ -505,8 +547,22 @@ def login():
                     form["username"],
                     bool(selected_profile_id),
                 )
-                flash("No address books found on the server.", "error")
-                return render_template("login.html", title="Login", profiles=profiles, form=form)
+                if not form["save_profile"] and not selected_profile_id:
+                    flash(
+                        "Connected, but no address books were found. Save a connection profile first, then create an address book from Connections.",
+                        "error",
+                    )
+                    return render_template(
+                        "login.html",
+                        title="Login",
+                        profiles=profiles,
+                        form=form,
+                        selected_profile_id=selected_profile_id,
+                    )
+                flash(
+                    "Connected, but no address books were found. Create one from the Connections page.",
+                    "success",
+                )
 
             set_active_connection(form["server_url"], form["username"], form["password"])
             app.logger.warning(
@@ -526,8 +582,9 @@ def login():
                         form["password"],
                         enabled=True,
                     )
-                    books_with_counts = fill_missing_contact_counts(profile_id, client, books)
-                    credential_store.save_or_update_address_books(profile_id, books_with_counts)
+                    if books:
+                        books_with_counts = fill_missing_contact_counts(profile_id, client, books)
+                        credential_store.save_or_update_address_books(profile_id, books_with_counts)
                     app.logger.warning("PROFILE CREATED id=%s", profile_id)
                     app.logger.warning(
                         "PROFILES AFTER CREATE: %s",
@@ -536,6 +593,8 @@ def login():
                 except Exception:
                     app.logger.exception("Failed to create profile %s", profile_name)
 
+            if not books:
+                return redirect(url_for("connections"))
             return redirect(url_for("dashboard"))
         except Exception as exc:
             app.logger.exception("Login failed for server %s user %s", form["server_url"], form["username"])
@@ -1121,6 +1180,105 @@ def profile_contact_quality(profile_id, collection_path):
         return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
 
 
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/new", methods=["GET", "POST"])
+def profile_new_contact(profile_id, collection_path):
+    app.logger.debug("Profile new contact %s %s", profile_id, collection_path)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+
+    books = credential_store.get_cached_address_books(profile_id)
+    book = normalize_book_for_template(
+        next((b for b in books if b["path"] == collection_path), None),
+        fallback_path=collection_path,
+    )
+    fields = empty_contact_fields()
+    raw_vcard = ""
+
+    if request.method == "POST":
+        if request.form.get("save_mode") == "raw":
+            raw_vcard = request.form.get("raw_vcard", "").strip()
+            if not raw_vcard:
+                flash("Raw vCard cannot be empty.", "error")
+                return render_template(
+                    "edit_contact.html",
+                    title="New Contact",
+                    form_title="New Contact",
+                    book=book,
+                    contact={"filename": "new contact"},
+                    fields=fields,
+                    raw_vcard=raw_vcard,
+                    profile_id=profile_id,
+                    is_new=True,
+                )
+            try:
+                fields = vcard_to_dict(raw_vcard)
+                filename = f"{fields.get('uid') or uuid.uuid4()}.vcf"
+                client.put_contact(collection_path, filename, raw_vcard + "\n")
+                update_cached_contact_count(profile_id, collection_path, None)
+                flash("Contact created.", "success")
+                return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=filename))
+            except Exception as exc:
+                app.logger.exception("Unable to create raw contact")
+                flash(f"Unable to create contact: {exc}", "error")
+                return render_template(
+                    "edit_contact.html",
+                    title="New Contact",
+                    form_title="New Contact",
+                    book=book,
+                    contact={"filename": "new contact"},
+                    fields=fields,
+                    raw_vcard=raw_vcard,
+                    profile_id=profile_id,
+                    is_new=True,
+                )
+
+        fields = contact_fields_from_form()
+        if not fields["full_name"] and not fields["first_name"] and not fields["last_name"]:
+            flash("Enter at least a full name, first name, or last name.", "error")
+            raw_vcard = build_vcard_from_fields(fields)
+            return render_template(
+                "edit_contact.html",
+                title="New Contact",
+                form_title="New Contact",
+                book=book,
+                contact={"filename": "new contact"},
+                fields=fields,
+                raw_vcard=raw_vcard,
+                profile_id=profile_id,
+                is_new=True,
+            )
+        try:
+            fields["uid"] = fields.get("uid") or str(uuid.uuid4())
+            if not fields["full_name"]:
+                fields["full_name"] = " ".join(part for part in [fields["first_name"], fields["last_name"]] if part)
+            filename = f"{fields['uid']}.vcf"
+            new_vcard = build_vcard_from_fields(fields)
+            client.put_contact(collection_path, filename, new_vcard)
+            update_cached_contact_count(profile_id, collection_path, None)
+            flash("Contact created.", "success")
+            return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=filename))
+        except Exception as exc:
+            app.logger.exception("Unable to create contact")
+            flash(f"Unable to create contact: {exc}", "error")
+            raw_vcard = build_vcard_from_fields(fields)
+
+    return render_template(
+        "edit_contact.html",
+        title="New Contact",
+        form_title="New Contact",
+        book=book,
+        contact={"filename": "new contact"},
+        fields=fields,
+        raw_vcard=raw_vcard,
+        profile_id=profile_id,
+        is_new=True,
+    )
+
+
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>")
 def profile_view_contact(profile_id, collection_path, contact_filename):
     app.logger.debug("Profile view contact %s %s %s", profile_id, collection_path, contact_filename)
@@ -1224,22 +1382,7 @@ def profile_edit_contact(profile_id, collection_path, contact_filename):
                 client.put_contact(collection_path, contact_filename, raw_vcard + "\n", if_match=etag)
                 flash("Contact saved.", "success")
                 return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
-            values = {
-                "uid": fields.get("uid"),
-                "full_name": request.form.get("full_name", "").strip(),
-                "first_name": request.form.get("first_name", "").strip(),
-                "last_name": request.form.get("last_name", "").strip(),
-                "nickname": request.form.get("nickname", "").strip(),
-                "organization": request.form.get("organization", "").strip(),
-                "job_title": request.form.get("job_title", "").strip(),
-                "birthday": request.form.get("birthday", "").strip(),
-                "address": request.form.get("address", "").strip(),
-                "note": request.form.get("note", "").strip(),
-                "emails": [email.strip() for email in request.form.get("emails", "").split(",") if email.strip()],
-                "phones": [phone.strip() for phone in request.form.get("phones", "").split(",") if phone.strip()],
-                "urls": [url.strip() for url in request.form.get("urls", "").split(",") if url.strip()],
-                "categories": [category.strip() for category in request.form.get("categories", "").split(",") if category.strip()],
-            }
+            values = contact_fields_from_form(fields.get("uid"))
             values["uid"] = fields.get("uid") or values.get("uid")
             new_vcard = build_vcard_from_fields(values)
             client.put_contact(collection_path, contact_filename, new_vcard, if_match=etag)
