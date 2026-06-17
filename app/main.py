@@ -77,18 +77,7 @@ NAV_ITEMS = [
     {"name": "Connections", "endpoint": "connections", "icon": "🔗", "group": "Administration", "quick": False},
     {"name": "New Connection", "endpoint": "new_connection", "icon": "➕", "group": "Administration", "quick": False},
     {"name": "Routes Explorer", "endpoint": "system_routes", "icon": "🧭", "group": "System", "quick": False},
-    {"name": "Features", "endpoint": "system_features", "icon": "⭐", "group": "System", "quick": False},
 ]
-
-# Persisted feature registry: seed DB if empty
-try:
-    existing = credential_store.get_features()
-    if not existing:
-        credential_store.add_feature("Contact Quality", status="planned")
-        credential_store.add_feature("Duplicates", status="in-development")
-        credential_store.add_feature("Import VCF", status="complete")
-except Exception:
-    app.logger.warning("Failed to seed feature registry, continuing with empty registry")
 
 def build_navigation(current_endpoint=None):
     groups = {}
@@ -937,47 +926,6 @@ def system_routes():
         routes.append({"endpoint": rule.endpoint, "path": str(rule), "methods": methods, "description": desc})
     routes = sorted(routes, key=lambda r: r["path"])
     return render_template("system_routes.html", routes=routes)
-
-
-@app.route("/system/features")
-def system_features():
-    """List registered features and their statuses for roadmap and discovery."""
-    grouped = {}
-    try:
-        features = credential_store.get_features()
-        for f in features:
-            grouped.setdefault(f.get("status", "planned"), []).append(f)
-    except Exception:
-        grouped = {}
-    return render_template("system_features.html", grouped=grouped)
-
-
-@app.route("/system/features/add", methods=["POST"])
-def system_features_add():
-    name = request.form.get("name", "").strip()
-    status = request.form.get("status", "planned").strip()
-    description = request.form.get("description", "").strip()
-    if not name:
-        flash("Feature name is required.", "error")
-        return redirect(url_for("system_features"))
-    try:
-        credential_store.add_feature(name, status=status, description=description)
-        flash("Feature saved.", "success")
-    except Exception as exc:
-        app.logger.exception("Failed to save feature %s", name)
-        flash(f"Failed to save feature: {exc}", "error")
-    return redirect(url_for("system_features"))
-
-
-@app.route("/system/features/delete/<int:feature_id>", methods=["POST"])
-def system_features_delete(feature_id):
-    try:
-        credential_store.delete_feature(feature_id)
-        flash("Feature deleted.", "success")
-    except Exception as exc:
-        app.logger.exception("Failed to delete feature %s", feature_id)
-        flash(f"Failed to delete feature: {exc}", "error")
-    return redirect(url_for("system_features"))
 
 
 @app.route("/connections/<int:profile_id>/delete", methods=["POST"])

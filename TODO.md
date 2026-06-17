@@ -177,7 +177,7 @@ Goal: become a contact quality and migration platform.
 - [x] Health endpoint
 - [x] Route explorer
 - [x] Feature registry
-- [ ] System page that combines version, uptime, database status, health, routes, and features
+- [ ] System page that combines version, uptime, database status, health, routes, and recent activity
 
 ## Suggested Next Build Slices
 
@@ -195,4 +195,4 @@ Goal: become a contact quality and migration platform.
 - The feature works on desktop and phone widths.
 - Existing unit tests pass.
 - New risky parsing, storage, or merge behavior has focused tests.
-- Dashboard or feature registry status is updated when appropriate.
+- Dashboard status is updated when appropriate.

@@ -25,7 +25,7 @@ def _utc_now():
 class CredentialStore:
     """Manage connection profiles and cached address books in SQLite.
 
-    This class exposes the methods requested by the feature spec:
+    This class exposes the methods requested by the connection/contact spec:
     - create_profile, update_profile, delete_profile, get_profile, get_profiles,
       get_enabled_profiles
     - save_or_update_address_books, get_cached_address_books, delete_address_books
@@ -86,18 +86,6 @@ class CredentialStore:
                     enabled INTEGER DEFAULT 1,
                     last_seen_at TEXT,
                     UNIQUE(profile_id, path)
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS features (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    status TEXT,
-                    description TEXT,
-                    created_at TEXT,
-                    updated_at TEXT
                 )
                 """
             )
@@ -321,42 +309,6 @@ class CredentialStore:
         with closing(self._connect()) as conn:
             conn.execute("DELETE FROM address_books WHERE profile_id = ?", (profile_id,))
             conn.commit()
-
-    # Feature registry persistence
-    def add_feature(self, name, status="planned", description=None):
-        now = _utc_now()
-        with closing(self._connect()) as conn:
-            conn.execute(
-                "INSERT INTO features (name, status, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET status=excluded.status, description=excluded.description, updated_at=excluded.updated_at",
-                (name, status, description or "", now, now),
-            )
-            conn.commit()
-        LOGGER.info("Added/updated feature %s (%s)", name, status)
-
-    def get_features(self):
-        with closing(self._connect()) as conn:
-            cursor = conn.execute(
-                "SELECT id, name, status, description, created_at, updated_at FROM features ORDER BY name"
-            )
-            rows = cursor.fetchall()
-            features = [
-                {
-                    "id": r[0],
-                    "name": r[1],
-                    "status": r[2],
-                    "description": r[3],
-                    "created_at": r[4],
-                    "updated_at": r[5],
-                }
-                for r in rows
-            ]
-        return features
-
-    def delete_feature(self, feature_id):
-        with closing(self._connect()) as conn:
-            conn.execute("DELETE FROM features WHERE id = ?", (feature_id,))
-            conn.commit()
-        LOGGER.info("Deleted feature %s", feature_id)
 
     def update_connection_status(self, profile_id, success, error_message=None):
         now = _utc_now()

@@ -147,19 +147,5 @@ class CredentialStoreTest(unittest.TestCase):
         self.assertIsNone(succeeded["last_error"])
         self.assertTrue(succeeded["last_successful_connect_at"])
 
-    def test_feature_registry_upsert_and_delete(self):
-        self.store.add_feature("Duplicates", status="planned", description="Find matches")
-        self.store.add_feature("Duplicates", status="complete", description="Find matches v2")
-
-        features = self.store.get_features()
-        self.assertEqual(len(features), 1)
-        self.assertEqual(features[0]["name"], "Duplicates")
-        self.assertEqual(features[0]["status"], "complete")
-        self.assertEqual(features[0]["description"], "Find matches v2")
-
-        self.store.delete_feature(features[0]["id"])
-        self.assertEqual(self.store.get_features(), [])
-
-
 if __name__ == "__main__":
     unittest.main()
