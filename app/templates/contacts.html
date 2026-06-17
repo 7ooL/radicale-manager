@@ -15,9 +15,23 @@
           <select name="bulk_action" required>
             <option value="">Choose action</option>
             <option value="export">Export selected</option>
+            {% if bulk_destinations %}
+              <option value="move">Move selected</option>
+            {% endif %}
             <option value="delete">Delete selected</option>
           </select>
         </label>
+        {% if bulk_destinations %}
+          <label id="bulk-destination-label" class="hidden">
+            Destination
+            <select name="dest" id="bulk-destination-select" disabled>
+              <option value="">Choose destination</option>
+              {% for destination in bulk_destinations %}
+                <option value="{{ destination.value }}">{{ destination.display }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% endif %}
         <button class="button small" type="submit">Apply</button>
       </form>
       <div class="table-toolbar">
@@ -77,6 +91,9 @@
       const count = document.getElementById('contact-filter-count');
       const empty = document.getElementById('no-contact-results');
       const selectAll = document.getElementById('select-all-contacts');
+      const bulkAction = document.querySelector('select[name="bulk_action"]');
+      const bulkDestinationLabel = document.getElementById('bulk-destination-label');
+      const bulkDestinationSelect = document.getElementById('bulk-destination-select');
       if (!table || !filter || !count || !empty) return;
 
       const tbody = table.querySelector('tbody');
@@ -134,6 +151,17 @@
             if (checkbox && !row.hidden) checkbox.checked = selectAll.checked;
           });
         });
+      }
+      if (bulkAction && bulkDestinationLabel && bulkDestinationSelect) {
+        const updateBulkDestination = () => {
+          const moving = bulkAction.value === 'move';
+          bulkDestinationLabel.classList.toggle('hidden', !moving);
+          bulkDestinationSelect.disabled = !moving;
+          bulkDestinationSelect.required = moving;
+          if (!moving) bulkDestinationSelect.value = '';
+        };
+        bulkAction.addEventListener('change', updateBulkDestination);
+        updateBulkDestination();
       }
       applyFilter();
     })();

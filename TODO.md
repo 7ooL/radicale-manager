@@ -59,7 +59,7 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 
 - [x] Multi-select contacts in list
 - [x] Bulk delete
-- [ ] Bulk move
+- [x] Bulk move
 - [ ] Bulk copy
 - [x] Bulk export
 

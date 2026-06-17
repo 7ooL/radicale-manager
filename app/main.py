@@ -322,6 +322,32 @@ def build_import_targets():
     return targets
 
 
+def build_contact_destinations(exclude_profile_id=None, exclude_collection_path=None):
+    destinations = []
+    exclude_collection_path = exclude_collection_path.strip("/") if exclude_collection_path else None
+    for profile in credential_store.get_enabled_profiles():
+        books = credential_store.get_cached_address_books(profile["id"]) or []
+        for book in books:
+            normalized = normalize_book_for_template(book)
+            if (
+                exclude_profile_id == profile["id"]
+                and exclude_collection_path
+                and normalized["path"].strip("/") == exclude_collection_path
+            ):
+                continue
+            destinations.append(
+                {
+                    "profile_id": profile["id"],
+                    "profile_name": profile["name"],
+                    "path": normalized["path"],
+                    "display_name": normalized["display_name"],
+                    "value": f"{profile['id']}::{normalized['path']}",
+                    "display": f"{profile['name']} / {normalized['display_name']}",
+                }
+            )
+    return destinations
+
+
 def import_vcf_into_book(profile_id, collection_path, file_storage):
     if not file_storage:
         raise ValueError("Please choose a VCF file to import.")
@@ -1072,12 +1098,17 @@ def profile_view_contacts(profile_id, collection_path):
             )
         )
         update_cached_contact_count(profile_id, collection_path, len(contacts))
+        bulk_destinations = build_contact_destinations(
+            exclude_profile_id=profile_id,
+            exclude_collection_path=collection_path,
+        )
         return render_template(
             "contacts.html",
             title=f"Contacts - {book.get('display_name')}",
             book=book,
             contacts=contacts,
             profile_id=profile_id,
+            bulk_destinations=bulk_destinations,
         )
     except Exception as exc:
         app.logger.exception("Unable to load contacts for profile %s book %s", profile_id, collection_path)
@@ -1138,6 +1169,49 @@ def profile_bulk_contacts(profile_id, collection_path):
             mimetype="text/vcard",
             as_attachment=True,
         )
+
+    if action == "move":
+        dest = request.form.get("dest")
+        dest_profile_id = None
+        dest_path = None
+        if dest:
+            try:
+                parts = dest.split("::", 1)
+                dest_profile_id = int(parts[0])
+                dest_path = parts[1]
+            except Exception:
+                dest_profile_id = None
+                dest_path = None
+        if not dest_profile_id or not dest_path:
+            flash("Destination profile and path are required.", "error")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+        try:
+            dest_client = get_client_for_profile(dest_profile_id)
+        except Exception as exc:
+            app.logger.exception("Failed to build destination client for profile %s", dest_profile_id)
+            flash(f"Unable to access destination profile: {exc}", "error")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+        moved = 0
+        failed = []
+        for filename in filenames:
+            source_href = f"{collection_path.rstrip('/')}/{filename}"
+            try:
+                vcard_text, _etag = client.get_contact(source_href)
+                dest_client.put_contact(dest_path, filename, vcard_text)
+                client.delete_contact(source_href)
+                moved += 1
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+
+        update_cached_contact_count(profile_id, collection_path, None)
+        update_cached_contact_count(dest_profile_id, dest_path, None)
+        if failed:
+            flash(f"Moved {moved} contacts. Failed: {'; '.join(failed)}", "error")
+        else:
+            flash(f"Moved {moved} contacts.", "success")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
 
     flash("Choose a bulk action.", "error")
     return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))

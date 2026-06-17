@@ -84,7 +84,10 @@ class MainRoutesTest(unittest.TestCase):
                 },
             ],
         )
-        FakeRadicaleClient.contacts = {"demo/source/contact-1.vcf": VCARD}
+        FakeRadicaleClient.contacts = {
+            "demo/source/contact-1.vcf": VCARD,
+            "demo/source/contact-2.vcf": VCARD.replace("contact-1", "contact-2").replace("Demo Contact", "Second Contact"),
+        }
         self.radicale_patch = patch.object(main, "RadicaleClient", FakeRadicaleClient)
         self.radicale_patch.start()
 
@@ -98,6 +101,13 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Add Contact", response.data)
         self.assertIn(b"Add the first contact", response.data)
+
+    def test_contact_list_has_bulk_move_destination_when_destinations_exist(self):
+        response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Move selected", response.data)
+        self.assertIn(b"Demo / Destination", response.data)
 
     def test_new_contact_creates_vcard_and_redirects_to_detail(self):
         with patch.object(main.uuid, "uuid4", return_value="new-contact"):
@@ -128,6 +138,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn("/profiles/1/books/demo/dest/contacts/contact-1.vcf", response.location)
         self.assertNotIn("demo/source/contact-1.vcf", FakeRadicaleClient.contacts)
         self.assertIn("demo/dest/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("demo/source/contact-2.vcf", FakeRadicaleClient.contacts)
         books = self.store.get_cached_address_books(self.profile_id)
         counts = {book["path"]: book["contact_count"] for book in books}
         self.assertIsNone(counts["demo/source"])
@@ -145,6 +156,27 @@ class MainRoutesTest(unittest.TestCase):
         books = self.store.get_cached_address_books(self.profile_id)
         counts = {book["path"]: book["contact_count"] for book in books}
         self.assertEqual(counts["demo/source"], 1)
+        self.assertIsNone(counts["demo/dest"])
+
+    def test_bulk_move_moves_selected_contacts_and_invalidates_counts(self):
+        response = self.client.post(
+            f"/profiles/{self.profile_id}/books/demo/source/contacts/bulk",
+            data={
+                "bulk_action": "move",
+                "dest": f"{self.profile_id}::demo/dest",
+                "contact_filename": ["contact-1.vcf", "contact-2.vcf"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/profiles/1/books/demo/source/contacts", response.location)
+        self.assertNotIn("demo/source/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertNotIn("demo/source/contact-2.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("demo/dest/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("demo/dest/contact-2.vcf", FakeRadicaleClient.contacts)
+        books = self.store.get_cached_address_books(self.profile_id)
+        counts = {book["path"]: book["contact_count"] for book in books}
+        self.assertIsNone(counts["demo/source"])
         self.assertIsNone(counts["demo/dest"])
 
 
