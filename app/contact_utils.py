@@ -28,11 +28,11 @@ def parse_vcf_contacts(vcf_content):
     if not blocks:
         raise ValueError("Invalid VCF file or no contacts found.")
 
-    for block in blocks:
+    for index, block in enumerate(blocks, start=1):
         try:
             card = vobject.readOne(block)
         except Exception as exc:
-            LOGGER.warning("Failed to parse VCARD block: %s", exc)
+            LOGGER.warning("Failed to parse VCARD block #%d: %s", index, exc)
             failed.append({"error": str(exc), "vcard": block})
             continue
 

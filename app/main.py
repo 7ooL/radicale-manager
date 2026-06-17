@@ -107,28 +107,27 @@ def login():
                 form["username"] = profile["username"]
                 form["password"] = profile.get("password") or ""
                 form["profile_name"] = profile["name"]
-            return render_template(
-                "login.html",
-                title="Login",
-                profiles=profiles,
-                form=form,
-                selected_profile_id=selected_profile_id,
-            )
-
-        form["server_url"] = request.form.get("server_url", app.config["DEFAULT_RADICALE_URL"]).strip()
-        form["username"] = request.form.get("username", "").strip()
+                app.logger.debug("Loaded profile %s for login", profile["name"])
+            else:
+                app.logger.warning("Selected profile id %s could not be loaded", selected_profile_id)
         form["password"] = request.form.get("password", "")
         form["profile_name"] = request.form.get("profile_name", "").strip()
         form["save_profile"] = bool(request.form.get("save_profile"))
         app.logger.debug(
-            "Login form submitted server=%s username=%s save_profile=%s",
+            "Login form submitted server=%s username=%s save_profile=%s direct_login=%s",
             form["server_url"],
             form["username"],
             form["save_profile"],
+            not selected_profile_id,
         )
 
         if not form["server_url"] or not form["username"] or not form["password"]:
-            app.logger.warning("Login form missing required fields")
+            app.logger.warning(
+                "Login form validation failed: server=%s username=%s password_present=%s",
+                bool(form["server_url"]),
+                bool(form["username"]),
+                bool(form["password"]),
+            )
             flash("Server URL, username, and password are required.", "error")
             return render_template(
                 "login.html",
@@ -141,13 +140,14 @@ def login():
         try:
             client = RadicaleClient(form["server_url"], form["username"], form["password"])
             books = client.discover_addressbooks()
-            app.logger.debug("Discovered %d books for login test", len(books))
+            app.logger.debug("Login discovery found %d books", len(books))
             if not books:
-                app.logger.warning("No address books found during login discovery")
+                app.logger.warning("Login discovery succeeded but no books were found")
                 app.logger.debug(
-                    "Login discovery details: server=%s username=%s no_books=True",
+                    "Login discovery details: server=%s username=%s selected_profile=%s no_books=True",
                     form["server_url"],
                     form["username"],
+                    bool(selected_profile_id),
                 )
                 flash("No address books found on the server.", "error")
                 return render_template("login.html", title="Login", profiles=profiles, form=form)
@@ -242,9 +242,11 @@ def import_vcf():
             return render_template("import.html", title="Import VCF", books=books, selected_path=selected_path)
 
         try:
-            content = file.read().decode("utf-8", errors="replace")
+            raw_bytes = file.read()
+            app.logger.debug("Read upload file size=%d", len(raw_bytes))
+            content = raw_bytes.decode("utf-8", errors="replace")
             contacts, failed = parse_vcf_contacts(content)
-            app.logger.debug("Parsed %d contacts with %d failures", len(contacts), len(failed))
+            app.logger.debug("Parsed %d contacts with %d failed blocks", len(contacts), len(failed))
             processed = 0
             created = 0
             updated = 0
@@ -269,8 +271,11 @@ def import_vcf():
                 len(failed),
             )
             flash("Import completed.", "success")
+        except UnicodeDecodeError as exc:
+            app.logger.exception("VCF decode failed")
+            flash(f"Import failed: cannot decode uploaded file as UTF-8: {exc}", "error")
         except Exception as exc:
-            app.logger.exception("Import failed")
+            app.logger.exception("Import failed during parsing or upload")
             flash(f"Import failed: {exc}", "error")
 
     return render_template(
@@ -361,6 +366,7 @@ def edit_contact(collection_path, contact_filename):
     contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
     try:
         vcard_text, etag = client.get_contact(contact_href)
+        app.logger.debug("Loaded contact %s with ETag=%s", contact_href, etag)
         fields = vcard_to_dict(vcard_text)
         if request.method == "POST":
             values = {
@@ -377,7 +383,7 @@ def edit_contact(collection_path, contact_filename):
             values["uid"] = fields.get("uid") or values.get("uid")
             new_vcard = build_vcard_from_fields(values)
             client.put_contact(collection_path, contact_filename, new_vcard, if_match=etag)
-            app.logger.info("Contact updated: %s", contact_href)
+            app.logger.info("Contact updated: %s with ETag=%s", contact_href, etag)
             flash("Contact saved.", "success")
             return redirect(url_for("view_contacts", collection_path=collection_path))
         return render_template(
@@ -405,6 +411,7 @@ def delete_contact(collection_path, contact_filename):
 
     contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
     try:
+        app.logger.debug("Deleting contact %s", contact_href)
         client.delete_contact(contact_href)
         app.logger.info("Deleted contact: %s", contact_href)
         flash("Contact deleted.", "success")

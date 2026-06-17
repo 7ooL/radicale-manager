@@ -28,6 +28,7 @@ class RadicaleClient:
         self.session = requests.Session()
         self.session.auth = HTTPBasicAuth(username, password)
         self.session.headers.update({"User-Agent": "radicale-uploader/1.0"})
+        self.last_propfind_response_text = None
         LOGGER.debug("Initialized RadicaleClient for %s", self.server_url)
 
     def _build_url(self, path):
@@ -43,16 +44,18 @@ class RadicaleClient:
         if not url.endswith("/"):
             url += "/"
         headers = {"Depth": str(depth), "Content-Type": "application/xml"}
-        LOGGER.debug("PROPFIND request URL=%s depth=%s", url, depth)
+        payload = body or self.PROP_BODY
+        LOGGER.debug("PROPFIND request URL=%s depth=%s body=%s", url, depth, payload)
         response = self.session.request(
             "PROPFIND",
             url,
             headers=headers,
-            data=body or self.PROP_BODY,
+            data=payload,
             timeout=30,
         )
         LOGGER.debug("PROPFIND response status=%s for URL=%s", response.status_code, url)
         response.raise_for_status()
+        self.last_propfind_response_text = response.text
         if LOGGER.isEnabledFor(logging.DEBUG):
             LOGGER.debug("PROPFIND response XML:\n%s", response.text)
         return ET.fromstring(response.text)
@@ -65,6 +68,8 @@ class RadicaleClient:
         for resp in root.findall("D:response", self.NAMESPACES):
             response_count += 1
             href = resp.find("D:href", self.NAMESPACES)
+            href_text = href.text.strip() if href is not None and href.text else ""
+            LOGGER.debug("Analyzing response #%d href=%s", response_count, href_text)
             if href is None or not href.text:
                 LOGGER.debug("Skipping response #%d without href", response_count)
                 continue
@@ -93,6 +98,8 @@ class RadicaleClient:
             LOGGER.debug("Found addressbook #%d path=%s displayname=%s", len(books), path, displayname.text)
         if not books:
             LOGGER.debug("Discovery parsed %d response entries but found no addressbooks", response_count)
+            if self.last_propfind_response_text is not None:
+                LOGGER.debug("Discovery raw XML response when no books found:\n%s", self.last_propfind_response_text)
         LOGGER.debug("Discovered %d addressbooks", len(books))
         return books
 
@@ -105,10 +112,11 @@ class RadicaleClient:
         for resp in root.findall("D:response", self.NAMESPACES):
             response_count += 1
             href = resp.find("D:href", self.NAMESPACES)
+            href_text = href.text.strip() if href is not None and href.text else ""
+            LOGGER.debug("Analyzing contact response #%d href=%s", response_count, href_text)
             if href is None or not href.text:
                 LOGGER.debug("Skipping list contact response #%d without href", response_count)
                 continue
-            href_text = href.text.strip()
             if href_text.endswith("/"):
                 LOGGER.debug("Skipping list contact response #%d because it is a directory: %s", response_count, href_text)
                 continue
