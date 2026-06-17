@@ -8,7 +8,7 @@
         <select name="collection_path" required>
           <option value="">Select address book</option>
           {% for book in books %}
-            <option value="{{ book.path }}" {% if selected_path == book.path %}selected{% endif %}>{{ book.name }}</option>
+            <option value="{{ book.path }}" {% if selected_path == book.path %}selected{% endif %}>{{ book.display_name or book.name }}</option>
           {% endfor %}
         </select>
       </label>

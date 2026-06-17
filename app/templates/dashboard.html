@@ -2,23 +2,33 @@
 {% block content %}
   <div class="card">
     <h1>Address Books</h1>
-    {% if books %}
-      <div class="grid-list">
-        {% for book in books %}
-          <article class="book-card">
-            <h2>{{ book.name }}</h2>
-            <p><strong>Path</strong><br>{{ book.path }}</p>
-            <p><strong>Contacts</strong><br>{{ book.count or 'unknown' }}</p>
-            <div class="button-row">
-              <a class="button" href="{{ url_for('view_contacts', collection_path=book.path) }}">View</a>
-              <a class="button" href="{{ url_for('import_vcf') }}?target={{ book.path }}">Import</a>
-              <a class="button" href="{{ url_for('export_addressbook', collection_path=book.path) }}">Export</a>
+    {% if profiles %}
+      {% for profile in profiles %}
+        <section class="profile-block">
+          <h2>{{ profile.name }}</h2>
+          <p><strong>Server</strong><br>{{ profile.server_url }} &nbsp; <strong>User</strong> {{ profile.username }}</p>
+          {% if profile.books %}
+            <div class="grid-list">
+              {% for book in profile.books %}
+                <article class="book-card">
+                  <h3>{{ book.display_name }}</h3>
+                  <p><strong>Path</strong><br>{{ book.path }}</p>
+                  <p><strong>Contacts</strong><br>{{ book.contact_count or 'unknown' }}</p>
+                  <div class="button-row">
+                    <a class="button" href="{{ url_for('profile_view_contacts', profile_id=profile.id, collection_path=book.path) }}">View</a>
+                    <a class="button" href="{{ url_for('profile_import_vcf', profile_id=profile.id, collection_path=book.path) }}">Import</a>
+                    <a class="button" href="{{ url_for('profile_export_addressbook', profile_id=profile.id, collection_path=book.path) }}">Export</a>
+                  </div>
+                </article>
+              {% endfor %}
             </div>
-          </article>
-        {% endfor %}
-      </div>
+          {% else %}
+            <p>No cached address books. Use the Connections page to refresh.</p>
+          {% endif %}
+        </section>
+      {% endfor %}
     {% else %}
-      <p>No address books discovered. Please verify your connection and try again.</p>
+      <p>No enabled connection profiles found. Add one on the Connections page.</p>
     {% endif %}
   </div>
 {% endblock %}

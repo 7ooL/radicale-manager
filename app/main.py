@@ -11,6 +11,7 @@ from flask import (
     send_file,
     session,
     url_for,
+    jsonify,
 )
 from radicale_client import RadicaleClient
 from contact_utils import (
@@ -48,12 +49,27 @@ def create_app():
         "https://radicale.murrey.io",
     )
     app.config["PROFILE_SECRET"] = os.environ.get("PROFILE_SECRET_KEY")
+    app.config["APP_VERSION"] = os.environ.get("APP_VERSION", "0.1.0")
+    app.config["GIT_COMMIT"] = os.environ.get("GIT_COMMIT")
     configure_logging(app)
     return app
 
 
 app = create_app()
 credential_store = CredentialStore(app.config["PROFILE_STORE_PATH"], app.config["PROFILE_SECRET"])
+
+# record process start for uptime
+START_TIME = datetime.utcnow()
+
+
+def get_client_for_profile(profile_id):
+    """Load the profile and return an authenticated RadicaleClient or raise."""
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        raise ValueError(f"Profile not found: {profile_id}")
+    if not profile.get("password"):
+        raise ValueError("Profile has no stored password")
+    return RadicaleClient(profile["server_url"], profile["username"], profile["password"])
 
 
 def get_active_connection():
@@ -162,14 +178,17 @@ def login():
 
             set_active_connection(form["server_url"], form["username"], form["password"])
             if form["save_profile"] and form["profile_name"]:
-                credential_store.save_profile(
-                    form["profile_name"],
-                    form["server_url"],
-                    form["username"],
-                    form["password"],
-                    save_password=True,
-                )
-                app.logger.debug("Saved profile %s", form["profile_name"])
+                try:
+                    credential_store.create_profile(
+                        form["profile_name"],
+                        form["server_url"],
+                        form["username"],
+                        form["password"],
+                        enabled=True,
+                    )
+                    app.logger.debug("Created profile %s", form["profile_name"])
+                except Exception:
+                    app.logger.exception("Failed to create profile %s", form["profile_name"])
 
             return redirect(url_for("dashboard"))
         except Exception as exc:
@@ -195,36 +214,166 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/connections")
+def connections():
+    """List saved connection profiles and their cached address books."""
+    app.logger.debug("Connections list requested")
+    profiles = credential_store.get_profiles()
+    for p in profiles:
+        try:
+            p["books"] = credential_store.get_cached_address_books(p["id"]) or []
+        except Exception:
+            p["books"] = []
+    return render_template("connections.html", title="Connections", profiles=profiles)
+
+
+@app.route("/connections/new", methods=["GET", "POST"])
+def new_connection():
+    app.logger.debug("New connection page %s", request.method)
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        server_url = request.form.get("server_url", "").strip()
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        enabled = bool(request.form.get("enabled"))
+        if not name or not server_url or not username:
+            flash("Name, server URL and username are required.", "error")
+            return render_template("connections_new.html", form=request.form)
+        try:
+            profile_id = credential_store.create_profile(name, server_url, username, password=password or None, enabled=enabled)
+            flash("Connection saved.", "success")
+            return redirect(url_for("connections"))
+        except Exception as exc:
+            app.logger.exception("Failed to create profile")
+            flash(f"Failed to save connection: {exc}", "error")
+            return render_template("connections_new.html", form=request.form)
+    return render_template("connections_new.html", form={})
+
+
+@app.route("/connections/<int:profile_id>/delete", methods=["POST"])
+def delete_connection(profile_id):
+    app.logger.debug("Delete connection %s requested", profile_id)
+    try:
+        credential_store.delete_profile(profile_id)
+        flash("Connection deleted.", "success")
+    except Exception as exc:
+        app.logger.exception("Failed to delete profile %s", profile_id)
+        flash(f"Failed to delete connection: {exc}", "error")
+    return redirect(url_for("connections"))
+
+
+@app.route("/connections/<int:profile_id>/test", methods=["POST"])
+def test_connection(profile_id):
+    app.logger.debug("Test connection %s", profile_id)
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    # Allow providing an override password for testing without saving
+    password = request.form.get("password") or profile.get("password")
+    try:
+        client = RadicaleClient(profile["server_url"], profile["username"], password)
+        books = client.discover_addressbooks()
+        credential_store.save_or_update_address_books(profile_id, books)
+        credential_store.update_connection_status(profile_id, True)
+        flash(f"Connection test succeeded: found {len(books)} books.", "success")
+    except Exception as exc:
+        credential_store.update_connection_status(profile_id, False, str(exc))
+        app.logger.exception("Connection test failed for %s", profile_id)
+        flash(f"Connection test failed: {exc}", "error")
+    return redirect(url_for("connections"))
+
+
+@app.route("/connections/<int:profile_id>/refresh", methods=["POST"])
+def refresh_addressbooks(profile_id):
+    app.logger.debug("Refresh address books for %s", profile_id)
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    if not profile.get("password"):
+        flash("Cannot refresh address books: profile has no stored password.", "error")
+        return redirect(url_for("connections"))
+    try:
+        client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
+        books = client.discover_addressbooks()
+        credential_store.save_or_update_address_books(profile_id, books)
+        credential_store.update_connection_status(profile_id, True)
+        flash(f"Refreshed {len(books)} address books.", "success")
+    except Exception as exc:
+        credential_store.update_connection_status(profile_id, False, str(exc))
+        app.logger.exception("Refresh failed for %s", profile_id)
+        flash(f"Refresh failed: {exc}", "error")
+    return redirect(url_for("connections"))
+
+
 @app.route("/dashboard")
 def dashboard():
-    """Show the list of address books and contact counts for the current connection."""
+    """Show enabled connection profiles with their discovered/cached address books."""
     app.logger.debug("Dashboard requested")
-    client = make_client()
-    if not client:
-        app.logger.warning("Dashboard access denied: no active client")
-        flash("Please connect first.", "error")
-        return redirect(url_for("login"))
+    profiles = credential_store.get_enabled_profiles()
+    display = []
+    for p in profiles:
+        entry = {**p}
+        try:
+            books = credential_store.get_cached_address_books(p["id"]) or []
+            # If no cache, try to discover now if password available
+            if not books and p.get("password") is None:
+                # load profile to get decrypted password
+                full = credential_store.get_profile(p["id"]) or {}
+                p_password = full.get("password")
+            else:
+                p_password = None
+            if not books and p_password:
+                try:
+                    client = RadicaleClient(p["server_url"], p["username"], p_password)
+                    discovered = client.discover_addressbooks()
+                    credential_store.save_or_update_address_books(p["id"], discovered)
+                    books = credential_store.get_cached_address_books(p["id"]) or []
+                except Exception as exc:
+                    app.logger.warning("Discovery for profile %s failed: %s", p.get("name"), exc)
+            entry["books"] = books
+        except Exception:
+            entry["books"] = []
+        display.append(entry)
+    return render_template("dashboard.html", title="Dashboard", profiles=display)
 
+
+@app.route('/health')
+def health():
+    """Basic health endpoint for liveness checks."""
+    uptime = datetime.utcnow() - START_TIME
+    return jsonify(
+        status="healthy",
+        version=app.config.get("APP_VERSION"),
+        git_commit=app.config.get("GIT_COMMIT"),
+        uptime_seconds=int(uptime.total_seconds()),
+    )
+
+
+@app.route('/ready')
+def ready():
+    """Readiness endpoint verifying DB and credential store availability."""
+    details = {}
+    overall = "ready"
+    # DB / credential store check
     try:
-        books = client.discover_addressbooks()
-        app.logger.debug("Found %d address books", len(books))
-        enriched = []
-        for book in books:
-            try:
-                contacts = client.list_contacts(book["path"])
-                enriched.append({**book, "count": len(contacts)})
-            except Exception as exc:
-                app.logger.warning(
-                    "Failed to count contacts for book %s: %s",
-                    book.get("path"),
-                    exc,
-                )
-                enriched.append({**book, "count": None})
-        return render_template("dashboard.html", title="Dashboard", books=enriched)
+        # Try a simple read from credential store
+        _ = credential_store.get_profiles()
+        details["credential_store"] = {"status": "ok"}
     except Exception as exc:
-        app.logger.exception("Failed to load dashboard books")
-        flash(f"Unable to retrieve address books: {exc}", "error")
-        return redirect(url_for("login"))
+        overall = "degraded"
+        details["credential_store"] = {"status": "error", "error": str(exc)}
+
+    # Config checks
+    secret_set = bool(app.config.get("PROFILE_SECRET"))
+    details["profile_secret_configured"] = secret_set
+
+    if not secret_set:
+        # Not fatal — just a warning
+        details["note"] = "PROFILE_SECRET_KEY not configured; credentials may be stored unencrypted"
+
+    return jsonify(status=overall, details=details)
 
 
 @app.route("/import", methods=["GET", "POST"])
@@ -293,6 +442,268 @@ def import_vcf():
         selected_path=selected_path,
         results=results,
     )
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts")
+def profile_view_contacts(profile_id, collection_path):
+    app.logger.debug("Profile view contacts %s %s", profile_id, collection_path)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    try:
+        # find book display name from cache
+        books = credential_store.get_cached_address_books(profile_id)
+        book = next((b for b in books if b["path"] == collection_path), {"path": collection_path, "display_name": collection_path})
+        contacts = []
+        for item in client.list_contacts(collection_path):
+            try:
+                parsed = vcard_to_dict(item["vcard"])
+                parsed["filename"] = get_contact_filename(item["href"])
+                contacts.append(parsed)
+            except Exception as exc:
+                app.logger.warning(
+                    "Skipping invalid contact %s in %s: %s",
+                    item.get("href"),
+                    collection_path,
+                    exc,
+                )
+                continue
+        return render_template(
+            "contacts.html",
+            title=f"Contacts - {book.get('display_name')}",
+            book={"path": collection_path, "name": book.get("display_name")},
+            contacts=contacts,
+            profile_id=profile_id,
+        )
+    except Exception as exc:
+        app.logger.exception("Unable to load contacts for profile %s book %s", profile_id, collection_path)
+        flash(f"Unable to load contacts: {exc}", "error")
+        return redirect(url_for("dashboard"))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>")
+def profile_view_contact(profile_id, collection_path, contact_filename):
+    app.logger.debug("Profile view contact %s %s %s", profile_id, collection_path, contact_filename)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    try:
+        books = credential_store.get_cached_address_books(profile_id)
+        book = next((b for b in books if b["path"] == collection_path), {"path": collection_path, "display_name": collection_path})
+        contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
+        vcard_text, etag = client.get_contact(contact_href)
+        contact = parse_vcard_contact(vcard_text)
+        contact["filename"] = contact_filename
+        contact["etag"] = etag
+        contact["href"] = contact_href
+        # prepare destination options (enabled profiles and their books)
+        destinations = []
+        try:
+            enabled = credential_store.get_enabled_profiles()
+            for pp in enabled:
+                books_list = credential_store.get_cached_address_books(pp["id"]) or []
+                for b in books_list:
+                    destinations.append({"profile_id": pp["id"], "profile_name": pp["name"], "path": b["path"], "display": f"{pp[\"name\"]} / {b['display_name']}"})
+        except Exception:
+            destinations = []
+        return render_template(
+            "contact_detail.html",
+            title=f"Contact - {contact_filename}",
+            book=book,
+            contact=contact,
+            profile_id=profile_id,
+            destinations=destinations,
+        )
+    except Exception as exc:
+        app.logger.exception("Unable to load contact %s", contact_filename)
+        flash(f"Unable to load contact: {exc}", "error")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/export")
+def profile_export_addressbook(profile_id, collection_path):
+    app.logger.debug("Profile export requested %s %s", profile_id, collection_path)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    try:
+        content = client.export_addressbook(collection_path)
+        if not content:
+            flash("No contacts available to export.", "error")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+        filename = f"radicale-{collection_path.replace('/', '_')}-{datetime.utcnow().date()}.vcf"
+        buffer = BytesIO(content.encode("utf-8"))
+        return send_file(buffer, download_name=filename, mimetype="text/vcard", as_attachment=True)
+    except Exception as exc:
+        app.logger.exception("Export failed for profile %s book %s", profile_id, collection_path)
+        flash(f"Export failed: {exc}", "error")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/edit", methods=["GET", "POST"])
+def profile_edit_contact(profile_id, collection_path, contact_filename):
+    app.logger.debug("Profile edit contact %s %s %s", profile_id, collection_path, contact_filename)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
+    try:
+        vcard_text, etag = client.get_contact(contact_href)
+        fields = vcard_to_dict(vcard_text)
+        if request.method == "POST":
+            values = {
+                "uid": fields.get("uid"),
+                "full_name": request.form.get("full_name", "").strip(),
+                "first_name": request.form.get("first_name", "").strip(),
+                "last_name": request.form.get("last_name", "").strip(),
+                "organization": request.form.get("organization", "").strip(),
+                "note": request.form.get("note", "").strip(),
+                "emails": [email.strip() for email in request.form.get("emails", "").split(",") if email.strip()],
+                "phones": [phone.strip() for phone in request.form.get("phones", "").split(",") if phone.strip()],
+            }
+            values["uid"] = fields.get("uid") or values.get("uid")
+            new_vcard = build_vcard_from_fields(values)
+            client.put_contact(collection_path, contact_filename, new_vcard, if_match=etag)
+            flash("Contact saved.", "success")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+        return render_template(
+            "edit_contact.html",
+            title="Edit Contact",
+            book={"path": collection_path, "name": collection_path},
+            contact={"filename": contact_filename},
+            fields=fields,
+            profile_id=profile_id,
+        )
+    except Exception as exc:
+        app.logger.exception("Unable to edit contact %s", contact_href)
+        flash(f"Unable to edit contact: {exc}", "error")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/delete", methods=["POST"])
+def profile_delete_contact(profile_id, collection_path, contact_filename):
+    app.logger.debug("Profile delete contact %s %s %s", profile_id, collection_path, contact_filename)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
+    try:
+        client.delete_contact(contact_href)
+        flash("Contact deleted.", "success")
+    except Exception as exc:
+        app.logger.exception("Delete failed for contact %s", contact_href)
+        flash(f"Delete failed: {exc}", "error")
+    return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/import", methods=["GET", "POST"])
+def profile_import_vcf(profile_id, collection_path):
+    app.logger.debug("Profile import %s %s %s", profile_id, collection_path, request.method)
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    results = None
+    if request.method == "POST":
+        file = request.files.get("vcf_file")
+        if not file:
+            flash("Please upload a VCF file.", "error")
+            return render_template("import.html", title="Import VCF", books=[], selected_path=collection_path)
+        try:
+            content = file.read().decode("utf-8", errors="replace")
+            contacts, failed = parse_vcf_contacts(content)
+            processed = created = updated = 0
+            for contact in contacts:
+                try:
+                    response = client.put_contact(collection_path, contact["filename"], contact["vcard"])
+                    if response.status_code == 201:
+                        created += 1
+                    else:
+                        updated += 1
+                    processed += 1
+                except Exception as exc:
+                    failed.append({"error": str(exc), "filename": contact.get("filename")})
+            results = {"processed": processed, "created": created, "updated": updated, "failed": failed}
+            flash("Import completed.", "success")
+        except Exception as exc:
+            app.logger.exception("Import failed for profile %s", profile_id)
+            flash(f"Import failed: {exc}", "error")
+    return render_template("import.html", title="Import VCF", books=credential_store.get_cached_address_books(profile_id), selected_path=collection_path, results=results)
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/copy", methods=["POST"])
+def profile_copy_contact(profile_id, collection_path, contact_filename):
+    dest = request.form.get("dest")
+    dest_profile_id = None
+    dest_path = None
+    if dest:
+        try:
+            parts = dest.split("::", 1)
+            dest_profile_id = int(parts[0])
+            dest_path = parts[1]
+        except Exception:
+            dest_profile_id = None
+            dest_path = None
+    if not dest_profile_id or not dest_path:
+        flash("Destination profile and path are required.", "error")
+        return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
+    try:
+        src_client = get_client_for_profile(profile_id)
+        vcard_text, etag = src_client.get_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
+        dest_client = get_client_for_profile(dest_profile_id)
+        dest_client.put_contact(dest_path, contact_filename, vcard_text)
+        flash("Contact copied successfully.", "success")
+    except Exception as exc:
+        app.logger.exception("Copy failed")
+        flash(f"Copy failed: {exc}", "error")
+    return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/move", methods=["POST"])
+def profile_move_contact(profile_id, collection_path, contact_filename):
+    dest = request.form.get("dest")
+    dest_profile_id = None
+    dest_path = None
+    if dest:
+        try:
+            parts = dest.split("::", 1)
+            dest_profile_id = int(parts[0])
+            dest_path = parts[1]
+        except Exception:
+            dest_profile_id = None
+            dest_path = None
+    if not dest_profile_id or not dest_path:
+        flash("Destination profile and path are required.", "error")
+        return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
+    try:
+        src_client = get_client_for_profile(profile_id)
+        vcard_text, etag = src_client.get_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
+        dest_client = get_client_for_profile(dest_profile_id)
+        dest_client.put_contact(dest_path, contact_filename, vcard_text)
+        # If put succeeded, delete source
+        src_client.delete_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
+        flash("Contact moved successfully.", "success")
+    except Exception as exc:
+        app.logger.exception("Move failed")
+        flash(f"Move failed: {exc}", "error")
+    return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
 
 
 @app.route("/books/<path:collection_path>/contacts")

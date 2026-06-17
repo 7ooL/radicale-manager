@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Connections</h1>
+    <a class="button" href="{{ url_for('new_connection') }}">New Connection</a>
+    {% if profiles %}
+      <div class="list">
+        {% for p in profiles %}
+          <div class="list-item">
+            <h3>{{ p.name }} {% if not p.enabled %}<span class="muted">(disabled)</span>{% endif %}</h3>
+            <p>{{ p.server_url }} — {{ p.username }}</p>
+            <p>Last success: {{ p.last_successful_connect_at or 'never' }} &nbsp; Last error: {{ p.last_error or 'none' }}</p>
+            <div class="button-row">
+              <form method="post" action="{{ url_for('test_connection', profile_id=p.id) }}" style="display:inline">
+                <button class="button small">Test</button>
+              </form>
+              <form method="post" action="{{ url_for('refresh_addressbooks', profile_id=p.id) }}" style="display:inline">
+                <button class="button small">Refresh Address Books</button>
+              </form>
+              <form method="post" action="{{ url_for('delete_connection', profile_id=p.id) }}" style="display:inline" onsubmit="return confirm('Delete this connection?');">
+                <button class="button small secondary">Delete</button>
+              </form>
+            </div>
+            {% if p.books %}
+              <ul>
+                {% for b in p.books %}
+                  <li>{{ b.display_name }} — {{ b.path }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No saved connections yet.</p>
+    {% endif %}
+  </div>
+{% endblock %}
