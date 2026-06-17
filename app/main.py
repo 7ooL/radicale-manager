@@ -144,6 +144,11 @@ def login():
             app.logger.debug("Discovered %d books for login test", len(books))
             if not books:
                 app.logger.warning("No address books found during login discovery")
+                app.logger.debug(
+                    "Login discovery details: server=%s username=%s no_books=True",
+                    form["server_url"],
+                    form["username"],
+                )
                 flash("No address books found on the server.", "error")
                 return render_template("login.html", title="Login", profiles=profiles, form=form)
 

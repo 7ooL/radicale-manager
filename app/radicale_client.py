@@ -43,7 +43,7 @@ class RadicaleClient:
         if not url.endswith("/"):
             url += "/"
         headers = {"Depth": str(depth), "Content-Type": "application/xml"}
-        LOGGER.debug("PROPFIND %s depth=%s", url, depth)
+        LOGGER.debug("PROPFIND request URL=%s depth=%s", url, depth)
         response = self.session.request(
             "PROPFIND",
             url,
@@ -51,27 +51,37 @@ class RadicaleClient:
             data=body or self.PROP_BODY,
             timeout=30,
         )
+        LOGGER.debug("PROPFIND response status=%s for URL=%s", response.status_code, url)
         response.raise_for_status()
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug("PROPFIND response XML:\n%s", response.text)
         return ET.fromstring(response.text)
 
     def discover_addressbooks(self):
         """Discover address book collections available on the Radicale server."""
         root = self.propfind("", depth=1)
         books = []
+        response_count = 0
         for resp in root.findall("D:response", self.NAMESPACES):
+            response_count += 1
             href = resp.find("D:href", self.NAMESPACES)
             if href is None or not href.text:
+                LOGGER.debug("Skipping response #%d without href", response_count)
                 continue
             resourcetype = resp.find(".//D:resourcetype", self.NAMESPACES)
             if resourcetype is None:
+                LOGGER.debug("Skipping response #%d without resourcetype", response_count)
                 continue
             if resourcetype.find("D:addressbook", self.NAMESPACES) is None:
+                LOGGER.debug("Skipping response #%d because no addressbook type was found", response_count)
                 continue
             displayname = resp.find(".//D:displayname", self.NAMESPACES)
             if displayname is None or not displayname.text:
+                LOGGER.debug("Skipping response #%d because displayname is missing", response_count)
                 continue
             path = href.text.strip("/")
             if not path:
+                LOGGER.debug("Skipping response #%d because href path is empty", response_count)
                 continue
             books.append(
                 {
@@ -80,6 +90,9 @@ class RadicaleClient:
                     "href": "/" + path + "/",
                 }
             )
+            LOGGER.debug("Found addressbook #%d path=%s displayname=%s", len(books), path, displayname.text)
+        if not books:
+            LOGGER.debug("Discovery parsed %d response entries but found no addressbooks", response_count)
         LOGGER.debug("Discovered %d addressbooks", len(books))
         return books
 
@@ -88,19 +101,25 @@ class RadicaleClient:
         collection_path = collection_path.strip("/")
         root = self.propfind(collection_path, depth=1)
         contacts = []
+        response_count = 0
         for resp in root.findall("D:response", self.NAMESPACES):
+            response_count += 1
             href = resp.find("D:href", self.NAMESPACES)
             if href is None or not href.text:
+                LOGGER.debug("Skipping list contact response #%d without href", response_count)
                 continue
             href_text = href.text.strip()
             if href_text.endswith("/"):
+                LOGGER.debug("Skipping list contact response #%d because it is a directory: %s", response_count, href_text)
                 continue
             if not href_text.lower().endswith(".vcf"):
+                LOGGER.debug("Skipping list contact response #%d because it is not a VCF file: %s", response_count, href_text)
                 continue
             contact_url = urljoin(self.server_url + "/", href_text.lstrip("/"))
+            LOGGER.debug("Fetching contact from %s", contact_url)
             vcard_text, etag = self.get_contact(contact_url)
             contacts.append({"href": contact_url, "vcard": vcard_text, "etag": etag})
-        LOGGER.debug("Listed %d contacts in collection %s", len(contacts), collection_path)
+        LOGGER.debug("Processed %d contact responses and listed %d contacts in collection %s", response_count, len(contacts), collection_path)
         return contacts
 
     def get_contact(self, contact_href):
