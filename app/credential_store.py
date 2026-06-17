@@ -2,7 +2,16 @@ import logging
 import os
 import sqlite3
 from datetime import datetime
-from cryptography.fernet import Fernet, InvalidToken
+
+# Optional: cryptography may not be available in all environments. Import safely.
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+    HAS_FERNET = True
+except Exception:
+    Fernet = None
+    InvalidToken = Exception
+    HAS_FERNET = False
+    logging.getLogger(__name__).warning("cryptography.fernet not available; passwords will be stored unencrypted")
 
 LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +39,8 @@ class CredentialStore:
         if not secret_key:
             return None
         # Derive a 32-byte key from the secret and make a Fernet instance
+        if not HAS_FERNET:
+            return None
         digest = __import__("hashlib").sha256(secret_key.encode("utf-8")).digest()
         token = __import__("base64").urlsafe_b64encode(digest)
         return Fernet(token)

@@ -179,14 +179,23 @@ def login():
             set_active_connection(form["server_url"], form["username"], form["password"])
             if form["save_profile"] and form["profile_name"]:
                 try:
-                    credential_store.create_profile(
+                    app.logger.debug(
+                        "Creating profile name=%s server=%s username=%s",
+                        form["profile_name"],
+                        form["server_url"],
+                        form["username"],
+                    )
+                    profile_id = credential_store.create_profile(
                         form["profile_name"],
                         form["server_url"],
                         form["username"],
                         form["password"],
                         enabled=True,
                     )
-                    app.logger.debug("Created profile %s", form["profile_name"])
+                    app.logger.debug(
+                        "Created profile id=%s",
+                        profile_id,
+                    )
                 except Exception:
                     app.logger.exception("Failed to create profile %s", form["profile_name"])
 
@@ -311,6 +320,22 @@ def refresh_addressbooks(profile_id):
 def dashboard():
     """Show enabled connection profiles with their discovered/cached address books."""
     app.logger.debug("Dashboard requested")
+    # Debug: log all stored profiles for troubleshooting visibility
+    try:
+        all_profiles = credential_store.get_profiles()
+        app.logger.debug("Dashboard loaded %d total profiles", len(all_profiles))
+        for p in all_profiles:
+            try:
+                app.logger.debug(
+                    "Profile id=%s name=%s enabled=%s",
+                    p.get("id"),
+                    p.get("name"),
+                    p.get("enabled"),
+                )
+            except Exception:
+                app.logger.debug("Profile logging failed for entry: %s", p)
+    except Exception:
+        app.logger.debug("Failed to load profiles for dashboard debug logging")
     profiles = credential_store.get_enabled_profiles()
     display = []
     for p in profiles:
@@ -399,6 +424,16 @@ def ready():
         details["note"] = "PROFILE_SECRET_KEY not configured; credentials may be stored unencrypted"
 
     return jsonify(status=overall, details=details)
+
+
+@app.route('/debug/profiles')
+def debug_profiles():
+    """Temporary debug endpoint to list stored connection profiles."""
+    try:
+        return jsonify(credential_store.get_profiles())
+    except Exception as exc:
+        app.logger.exception("Failed to return debug profiles")
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/import", methods=["GET", "POST"])
