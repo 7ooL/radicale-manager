@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>All Contacts</h1>
+    <p class="muted">{{ contacts|length }} contacts across enabled connections and cached address books.</p>
+
+    {% if errors %}
+      <div class="result-block">
+        <h2>Load warnings</h2>
+        <ul class="failure-list">
+          {% for error in errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if contacts %}
+      <form id="global-bulk-contacts-form" method="post" action="{{ url_for('global_bulk_contacts') }}" class="bulk-form">
+        <label>
+          Bulk action
+          <select name="bulk_action" required>
+            <option value="">Choose action</option>
+            <option value="export">Export selected</option>
+            {% if destinations %}
+              <option value="move">Move selected</option>
+            {% endif %}
+            <option value="delete">Delete selected</option>
+          </select>
+        </label>
+        {% if destinations %}
+          <label id="global-bulk-destination-label" class="hidden">
+            Destination
+            <select name="dest" id="global-bulk-destination-select" disabled>
+              <option value="">Choose destination</option>
+              {% for destination in destinations %}
+                <option value="{{ destination.value }}">{{ destination.display }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% endif %}
+        <button class="button small" type="submit">Apply</button>
+      </form>
+
+      <div class="table-toolbar">
+        <label class="filter-label">
+          Filter contacts
+          <input id="global-contact-filter" type="search" placeholder="Type a name, email, phone, company, book..." autocomplete="off" />
+        </label>
+        <p class="muted compact" id="global-contact-filter-count">{{ contacts|length }} contacts</p>
+      </div>
+
+      <table class="data-table sortable-table global-contacts-table" id="global-contacts-table">
+        <thead>
+          <tr>
+            <th><input id="select-all-global-contacts" type="checkbox" aria-label="Select all contacts" /></th>
+            <th><button class="sort-button active ascending" type="button" data-sort-key="name">Full Name</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="book">Book</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="profile">Connection</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="organization">Organization</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="email">Email</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="phone">Phone</button></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for contact in contacts %}
+            {% set email_text = contact.emails|join(', ') %}
+            {% set phone_text = contact.phones|join(', ') %}
+            {% set contact_ref = contact.profile_id ~ '::' ~ contact.book_path ~ '::' ~ contact.filename %}
+            <tr
+              data-name="{{ contact.full_name|lower }}"
+              data-book="{{ contact.book_name|lower }}"
+              data-profile="{{ contact.profile_name|lower }}"
+              data-organization="{{ contact.organization|lower }}"
+              data-email="{{ email_text|lower }}"
+              data-phone="{{ phone_text|lower }}"
+              data-search="{{ (contact.full_name ~ ' ' ~ contact.book_name ~ ' ' ~ contact.profile_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
+            >
+              <td data-label="Select">
+                <input form="global-bulk-contacts-form" name="contact_ref" value="{{ contact_ref }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" />
+              </td>
+              <td data-label="Full Name">
+                <a href="{{ url_for('profile_view_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">{{ contact.full_name or contact.filename }}</a>
+              </td>
+              <td data-label="Book">
+                <a href="{{ url_for('profile_view_contacts', profile_id=contact.profile_id, collection_path=contact.book_path) }}">{{ contact.book_name }}</a>
+                <div class="muted compact">{{ contact.book_path }}</div>
+              </td>
+              <td data-label="Connection">{{ contact.profile_name }}</td>
+              <td data-label="Organization">{{ contact.organization }}</td>
+              <td data-label="Email">{{ email_text }}</td>
+              <td data-label="Phone">{{ phone_text }}</td>
+              <td data-label="Actions">
+                <a class="button small" href="{{ url_for('profile_view_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">View</a>
+                <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">Edit</a>
+                <form method="post" action="{{ url_for('profile_delete_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}" style="display:inline">
+                  <button class="button small secondary" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted hidden" id="no-global-contact-results">No contacts match that filter.</p>
+    {% else %}
+      <p>No contacts found across enabled connections.</p>
+      <a class="button" href="{{ url_for('connections') }}">Manage Connections</a>
+    {% endif %}
+  </div>
+
+  <script>
+    (() => {
+      const table = document.getElementById('global-contacts-table');
+      const filter = document.getElementById('global-contact-filter');
+      const count = document.getElementById('global-contact-filter-count');
+      const empty = document.getElementById('no-global-contact-results');
+      const selectAll = document.getElementById('select-all-global-contacts');
+      const bulkAction = document.querySelector('select[name="bulk_action"]');
+      const bulkDestinationLabel = document.getElementById('global-bulk-destination-label');
+      const bulkDestinationSelect = document.getElementById('global-bulk-destination-select');
+      if (!table || !filter || !count || !empty) return;
+
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      let sortKey = 'name';
+      let sortDirection = 'ascending';
+
+      const normalize = value => (value || '').toString().trim().toLocaleLowerCase();
+
+      function applyFilter() {
+        const query = normalize(filter.value);
+        let visible = 0;
+        rows.forEach(row => {
+          const matches = !query || normalize(row.dataset.search).includes(query);
+          row.hidden = !matches;
+          if (matches) visible += 1;
+        });
+        count.textContent = `${visible} of ${rows.length} contacts`;
+        empty.classList.toggle('hidden', visible !== 0);
+      }
+
+      function applySort(nextKey) {
+        if (nextKey === sortKey) {
+          sortDirection = sortDirection === 'ascending' ? 'descending' : 'ascending';
+        } else {
+          sortKey = nextKey;
+          sortDirection = 'ascending';
+        }
+
+        const direction = sortDirection === 'ascending' ? 1 : -1;
+        rows.sort((a, b) => {
+          const primary = normalize(a.dataset[sortKey]).localeCompare(normalize(b.dataset[sortKey]));
+          if (primary !== 0) return primary * direction;
+          return normalize(a.dataset.name).localeCompare(normalize(b.dataset.name));
+        });
+        rows.forEach(row => tbody.appendChild(row));
+
+        table.querySelectorAll('.sort-button').forEach(button => {
+          const active = button.dataset.sortKey === sortKey;
+          button.classList.toggle('active', active);
+          button.classList.toggle('ascending', active && sortDirection === 'ascending');
+          button.classList.toggle('descending', active && sortDirection === 'descending');
+        });
+        applyFilter();
+      }
+
+      table.querySelectorAll('.sort-button').forEach(button => {
+        button.addEventListener('click', () => applySort(button.dataset.sortKey));
+      });
+      filter.addEventListener('input', applyFilter);
+      if (selectAll) {
+        selectAll.addEventListener('change', () => {
+          rows.forEach(row => {
+            const checkbox = row.querySelector('input[name="contact_ref"]');
+            if (checkbox && !row.hidden) checkbox.checked = selectAll.checked;
+          });
+        });
+      }
+      if (bulkAction && bulkDestinationLabel && bulkDestinationSelect) {
+        const updateBulkDestination = () => {
+          const moving = bulkAction.value === 'move';
+          bulkDestinationLabel.classList.toggle('hidden', !moving);
+          bulkDestinationSelect.disabled = !moving;
+          bulkDestinationSelect.required = moving;
+          if (!moving) bulkDestinationSelect.value = '';
+        };
+        bulkAction.addEventListener('change', updateBulkDestination);
+        updateBulkDestination();
+      }
+      applyFilter();
+    })();
+  </script>
+{% endblock %}

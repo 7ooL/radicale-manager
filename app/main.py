@@ -69,6 +69,7 @@ START_TIME = datetime.now(timezone.utc)
 # Navigation registry: central place to declare visible pages
 NAV_ITEMS = [
     {"name": "Dashboard", "endpoint": "dashboard", "icon": "🏠", "group": "General", "quick": True},
+    {"name": "All Contacts", "endpoint": "global_contacts", "icon": "👥", "group": "General", "quick": True},
     {"name": "Import", "endpoint": "import_vcf", "icon": "⬆️", "group": "General", "quick": False},
     {"name": "Connections", "endpoint": "connections", "icon": "🔗", "group": "Administration", "quick": False},
     {"name": "New Connection", "endpoint": "new_connection", "icon": "➕", "group": "Administration", "quick": False},
@@ -493,6 +494,18 @@ def contact_fields_from_form(existing_uid=None):
         "urls": [url.strip() for url in request.form.get("urls", "").split(",") if url.strip()],
         "categories": [category.strip() for category in request.form.get("categories", "").split(",") if category.strip()],
     }
+
+
+def parse_global_contact_selection(value):
+    parts = (value or "").split("::", 2)
+    if len(parts) != 3:
+        raise ValueError("Invalid contact selection")
+    profile_id = int(parts[0])
+    collection_path = parts[1].strip("/")
+    filename = parts[2].strip()
+    if not collection_path or not filename:
+        raise ValueError("Invalid contact selection")
+    return profile_id, collection_path, filename
 
 
 def make_client():
@@ -976,6 +989,183 @@ def dashboard():
     }
 
     return render_template("dashboard.html", title="Dashboard", profiles=display, metrics=metrics)
+
+
+@app.route("/contacts")
+def global_contacts():
+    """Show all contacts across enabled profiles and address books."""
+    contacts = []
+    errors = []
+    profiles = credential_store.get_enabled_profiles()
+    for profile in profiles:
+        full_profile = credential_store.get_profile(profile["id"]) or {}
+        password = full_profile.get("password")
+        books = credential_store.get_cached_address_books(profile["id"]) or []
+        if not password:
+            errors.append(f"{profile['name']}: no stored password")
+            continue
+        try:
+            client = RadicaleClient(profile["server_url"], profile["username"], password)
+        except Exception as exc:
+            errors.append(f"{profile['name']}: {exc}")
+            continue
+
+        for book in books:
+            normalized_book = normalize_book_for_template(book)
+            try:
+                listed = client.list_contacts(normalized_book["path"])
+                update_cached_contact_count(profile["id"], normalized_book["path"], len(listed))
+            except Exception as exc:
+                errors.append(f"{profile['name']} / {normalized_book['display_name']}: {exc}")
+                continue
+
+            for item in listed:
+                try:
+                    parsed = vcard_to_dict(item["vcard"])
+                    filename = get_contact_filename(item["href"])
+                    parsed.update(
+                        {
+                            "filename": filename,
+                            "profile_id": profile["id"],
+                            "profile_name": profile["name"],
+                            "book_path": normalized_book["path"],
+                            "book_name": normalized_book["display_name"],
+                        }
+                    )
+                    contacts.append(parsed)
+                except Exception as exc:
+                    errors.append(f"{profile['name']} / {normalized_book['display_name']}: skipped invalid contact ({exc})")
+
+    contacts.sort(
+        key=lambda contact: (
+            (contact.get("full_name") or "").casefold(),
+            (contact.get("profile_name") or "").casefold(),
+            (contact.get("book_name") or "").casefold(),
+            (contact.get("filename") or "").casefold(),
+        )
+    )
+    destinations = build_contact_destinations()
+    return render_template(
+        "global_contacts.html",
+        title="All Contacts",
+        contacts=contacts,
+        destinations=destinations,
+        errors=errors,
+    )
+
+
+@app.route("/contacts/bulk", methods=["POST"])
+def global_bulk_contacts():
+    action = request.form.get("bulk_action")
+    selected = [value for value in request.form.getlist("contact_ref") if value]
+    if not selected:
+        flash("Select at least one contact.", "error")
+        return redirect(url_for("global_contacts"))
+
+    refs = []
+    try:
+        refs = [parse_global_contact_selection(value) for value in selected]
+    except Exception as exc:
+        flash(f"Invalid contact selection: {exc}", "error")
+        return redirect(url_for("global_contacts"))
+
+    client_cache = {}
+
+    def client_for(profile_id):
+        if profile_id not in client_cache:
+            client_cache[profile_id] = get_client_for_profile(profile_id)
+        return client_cache[profile_id]
+
+    if action == "export":
+        exported = []
+        failed = []
+        for source_profile_id, source_path, filename in refs:
+            try:
+                vcard_text, _etag = client_for(source_profile_id).get_contact(f"{source_path}/{filename}")
+                exported.append(vcard_text.strip())
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+        if not exported:
+            flash(f"Export failed: {'; '.join(failed) or 'no contacts could be exported'}", "error")
+            return redirect(url_for("global_contacts"))
+        if failed:
+            flash(f"Exported {len(exported)} contacts. Failed: {'; '.join(failed)}", "error")
+        content = "\n".join(exported) + "\n"
+        filename = f"radicale-global-selected-{datetime.now(timezone.utc).date()}.vcf"
+        return send_file(
+            BytesIO(content.encode("utf-8")),
+            download_name=filename,
+            mimetype="text/vcard",
+            as_attachment=True,
+        )
+
+    if action == "delete":
+        deleted = 0
+        failed = []
+        touched_books = set()
+        for source_profile_id, source_path, filename in refs:
+            try:
+                client_for(source_profile_id).delete_contact(f"{source_path}/{filename}")
+                touched_books.add((source_profile_id, source_path))
+                deleted += 1
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+        for touched_profile_id, touched_path in touched_books:
+            update_cached_contact_count(touched_profile_id, touched_path, None)
+        if failed:
+            flash(f"Deleted {deleted} contacts. Failed: {'; '.join(failed)}", "error")
+        else:
+            flash(f"Deleted {deleted} contacts.", "success")
+        return redirect(url_for("global_contacts"))
+
+    if action == "move":
+        dest = request.form.get("dest")
+        dest_profile_id = None
+        dest_path = None
+        if dest:
+            try:
+                parts = dest.split("::", 1)
+                dest_profile_id = int(parts[0])
+                dest_path = parts[1].strip("/")
+            except Exception:
+                dest_profile_id = None
+                dest_path = None
+        if not dest_profile_id or not dest_path:
+            flash("Destination profile and path are required.", "error")
+            return redirect(url_for("global_contacts"))
+
+        moved = 0
+        failed = []
+        touched_books = {(dest_profile_id, dest_path)}
+        try:
+            dest_client = client_for(dest_profile_id)
+        except Exception as exc:
+            flash(f"Unable to access destination profile: {exc}", "error")
+            return redirect(url_for("global_contacts"))
+
+        for source_profile_id, source_path, filename in refs:
+            if source_profile_id == dest_profile_id and source_path.strip("/") == dest_path:
+                failed.append(f"{filename}: already in destination")
+                continue
+            try:
+                source_client = client_for(source_profile_id)
+                vcard_text, _etag = source_client.get_contact(f"{source_path}/{filename}")
+                dest_client.put_contact(dest_path, filename, vcard_text)
+                source_client.delete_contact(f"{source_path}/{filename}")
+                touched_books.add((source_profile_id, source_path))
+                moved += 1
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+        for touched_profile_id, touched_path in touched_books:
+            update_cached_contact_count(touched_profile_id, touched_path, None)
+        if failed:
+            flash(f"Moved {moved} contacts. Failed: {'; '.join(failed)}", "error")
+        else:
+            flash(f"Moved {moved} contacts.", "success")
+        return redirect(url_for("global_contacts"))
+
+    flash("Choose a bulk action.", "error")
+    return redirect(url_for("global_contacts"))
 
 
 @app.route('/health')

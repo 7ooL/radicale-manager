@@ -67,6 +67,12 @@ class MainRoutesTest(unittest.TestCase):
             "demo",
             password="secret",
         )
+        self.family_profile_id = self.store.create_profile(
+            "Family",
+            "http://radicale.example.test",
+            "family",
+            password="secret",
+        )
         self.store.save_or_update_address_books(
             self.profile_id,
             [
@@ -80,6 +86,17 @@ class MainRoutesTest(unittest.TestCase):
                     "display_name": "Destination",
                     "path": "demo/dest",
                     "href": "/demo/dest/",
+                    "contact_count": 0,
+                },
+            ],
+        )
+        self.store.save_or_update_address_books(
+            self.family_profile_id,
+            [
+                {
+                    "display_name": "Shared",
+                    "path": "family/shared",
+                    "href": "/family/shared/",
                     "contact_count": 0,
                 },
             ],
@@ -178,6 +195,51 @@ class MainRoutesTest(unittest.TestCase):
         counts = {book["path"]: book["contact_count"] for book in books}
         self.assertIsNone(counts["demo/source"])
         self.assertIsNone(counts["demo/dest"])
+
+    def test_global_contacts_lists_contacts_with_book_context_and_actions(self):
+        response = self.client.get("/contacts")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"All Contacts", response.data)
+        self.assertIn(b"Demo Contact", response.data)
+        self.assertIn(b"Second Contact", response.data)
+        self.assertIn(b"Source", response.data)
+        self.assertIn(b"Demo", response.data)
+        self.assertIn(b"Move selected", response.data)
+        self.assertIn(b"Select all contacts", response.data)
+        self.assertIn(b"Family / Shared", response.data)
+        self.assertIn(b"name=\"contact_ref\"", response.data)
+        self.assertIn(b"/profiles/1/books/demo/source/contacts/contact-1.vcf/edit", response.data)
+
+    def test_global_bulk_move_moves_selected_contacts_to_destination(self):
+        response = self.client.post(
+            "/contacts/bulk",
+            data={
+                "bulk_action": "move",
+                "dest": f"{self.family_profile_id}::family/shared",
+                "contact_ref": [
+                    f"{self.profile_id}::demo/source::contact-1.vcf",
+                    f"{self.profile_id}::demo/source::contact-2.vcf",
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/contacts", response.location)
+        self.assertNotIn("demo/source/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertNotIn("demo/source/contact-2.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("family/shared/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertIn("family/shared/contact-2.vcf", FakeRadicaleClient.contacts)
+        demo_counts = {
+            book["path"]: book["contact_count"]
+            for book in self.store.get_cached_address_books(self.profile_id)
+        }
+        family_counts = {
+            book["path"]: book["contact_count"]
+            for book in self.store.get_cached_address_books(self.family_profile_id)
+        }
+        self.assertIsNone(demo_counts["demo/source"])
+        self.assertIsNone(family_counts["family/shared"])
 
 
 if __name__ == "__main__":

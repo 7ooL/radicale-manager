@@ -77,6 +77,7 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 
 - [x] Address-book live filter
 - [x] Sort by contact list columns
+- [x] Global contact view across all connections and books
 - [ ] Global search across all connections and books
 - [ ] Search by name, email, phone, and company
 - [ ] Filters by connection and address book
