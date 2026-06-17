@@ -1,7 +1,8 @@
 ﻿import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
+from dotenv import load_dotenv
 from flask import (
     Flask,
     flash,
@@ -38,6 +39,7 @@ def configure_logging(app):
 
 
 def create_app():
+    load_dotenv(override=True)
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("APP_SECRET_KEY") or os.urandom(24)
     app.config["PROFILE_STORE_PATH"] = os.environ.get(
@@ -46,7 +48,7 @@ def create_app():
     )
     app.config["DEFAULT_RADICALE_URL"] = os.environ.get(
         "DEFAULT_RADICALE_URL",
-        "https://radicale.murrey.io",
+        "https://radicale.example.test",
     )
     app.config["PROFILE_SECRET"] = os.environ.get("PROFILE_SECRET_KEY")
     app.config["APP_VERSION"] = os.environ.get("APP_VERSION", "0.1.0")
@@ -59,7 +61,7 @@ app = create_app()
 credential_store = CredentialStore(app.config["PROFILE_STORE_PATH"], app.config["PROFILE_SECRET"])
 
 # record process start for uptime
-START_TIME = datetime.utcnow()
+START_TIME = datetime.now(timezone.utc)
 
 # Navigation registry: central place to declare visible pages
 NAV_ITEMS = [
@@ -601,7 +603,7 @@ def dashboard():
 @app.route('/health')
 def health():
     """Basic health endpoint for liveness checks."""
-    uptime = datetime.utcnow() - START_TIME
+    uptime = datetime.now(timezone.utc) - START_TIME
     return jsonify(
         status="healthy",
         version=app.config.get("APP_VERSION"),
@@ -820,7 +822,7 @@ def profile_export_addressbook(profile_id, collection_path):
         if not content:
             flash("No contacts available to export.", "error")
             return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
-        filename = f"radicale-{collection_path.replace('/', '_')}-{datetime.utcnow().date()}.vcf"
+        filename = f"radicale-{collection_path.replace('/', '_')}-{datetime.now(timezone.utc).date()}.vcf"
         buffer = BytesIO(content.encode("utf-8"))
         return send_file(buffer, download_name=filename, mimetype="text/vcard", as_attachment=True)
     except Exception as exc:
@@ -1123,7 +1125,7 @@ def export_addressbook(collection_path):
             app.logger.info("Export found no content for path: %s", collection_path)
             flash("No contacts available to export.", "error")
             return redirect(url_for("view_contacts", collection_path=collection_path))
-        filename = f"radicale-{collection_path.replace('/', '_')}-{datetime.utcnow().date()}.vcf"
+        filename = f"radicale-{collection_path.replace('/', '_')}-{datetime.now(timezone.utc).date()}.vcf"
         app.logger.info("Exporting address book %s as %s", collection_path, filename)
         buffer = BytesIO(content.encode("utf-8"))
         return send_file(
@@ -1215,4 +1217,7 @@ def delete_contact(collection_path, contact_filename):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", "5000"))
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes", "on")
+    extra_files = [".env"] if debug and os.path.exists(".env") else None
+    app.run(host="0.0.0.0", port=port, debug=debug, extra_files=extra_files)

@@ -128,6 +128,9 @@ poetry.lock
 # dotenv
 .env
 
+# Local personal notes
+LOCAL_DEV.md
+
 # virtualenv
 venv/
 ENV/
@@ -149,7 +152,10 @@ venv/
 ENV/
 
 # VS Code
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
 
 # macOS
 .DS_Store
