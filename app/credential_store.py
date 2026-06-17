@@ -306,9 +306,9 @@ class CredentialStore:
         with self._connect() as conn:
             conn.execute("DELETE FROM features WHERE id = ?", (feature_id,))
             conn.commit()
-        LOGGER.info("Deleted feature %s", feature_id)
+            LOGGER.info("Deleted feature %s", feature_id)
             conn.commit()
-        LOGGER.info("Deleted cached address books for profile %s", profile_id)
+            LOGGER.info("Deleted cached address books for profile %s", profile_id)
 
     def update_connection_status(self, profile_id, success, error_message=None):
         now = datetime.utcnow().isoformat() + "Z"
