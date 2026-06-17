@@ -119,6 +119,37 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Add Contact", response.data)
         self.assertIn(b"Add the first contact", response.data)
 
+    def test_edit_connection_get_prefills_existing_profile_data(self):
+        response = self.client.get(f"/connections/{self.profile_id}/edit")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Edit Connection", response.data)
+        self.assertIn(b'value="Demo"', response.data)
+        self.assertIn(b'value="http://radicale.example.test"', response.data)
+        self.assertIn(b'value="demo"', response.data)
+        self.assertIn(b"Leave blank to keep the current password.", response.data)
+
+    def test_edit_connection_post_updates_core_fields_and_keeps_password_when_blank(self):
+        response = self.client.post(
+            f"/connections/{self.profile_id}/edit",
+            data={
+                "profile_name": "Demo Updated",
+                "server_url": "https://radicale.updated.example.test",
+                "username": "demo-updated",
+                "password": "",
+                "enabled": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/connections", response.location)
+        profile = self.store.get_profile(self.profile_id)
+        self.assertEqual(profile["name"], "Demo Updated")
+        self.assertEqual(profile["server_url"], "https://radicale.updated.example.test")
+        self.assertEqual(profile["username"], "demo-updated")
+        self.assertEqual(profile["password"], "secret")
+        self.assertTrue(profile["enabled"])
+
     def test_contact_list_has_bulk_move_destination_when_destinations_exist(self):
         response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts")
 

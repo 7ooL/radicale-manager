@@ -24,7 +24,7 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Connection deletion
 - [x] Connection testing
 - [x] Connection health/status
-- [ ] Connection editing UI
+- [x] Connection editing UI
 - [ ] Credential encryption verification and setup guidance
 - [ ] Profile export/import
 - [ ] Connection grouping

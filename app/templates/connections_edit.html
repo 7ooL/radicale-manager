@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card form-card">
+    <h1>Edit Connection</h1>
+    <form method="post">
+      <label>
+        Server URL
+        <input type="url" name="server_url" value="{{ form.server_url or '' }}" required />
+      </label>
+
+      <label>
+        Username
+        <input type="text" name="username" value="{{ form.username or '' }}" required />
+      </label>
+
+      <label>
+        Password
+        <input type="password" name="password" value="" />
+        <small>Leave blank to keep the current password.</small>
+      </label>
+
+      <label>
+        Profile name
+        <input type="text" name="profile_name" value="{{ form.profile_name or '' }}" required />
+      </label>
+
+      <label class="checkbox-label">
+        <input type="checkbox" name="enabled" {% if form.enabled %}checked{% endif %}/> Enabled
+      </label>
+
+      <div class="button-row">
+        <button class="button" type="submit">Save Changes</button>
+        <a class="button secondary" href="{{ url_for('connections') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -713,6 +713,64 @@ def new_connection():
     return render_template("connections_new.html", form=form)
 
 
+@app.route("/connections/<int:profile_id>/edit", methods=["GET", "POST"])
+def edit_connection(profile_id):
+    app.logger.debug("Edit connection %s %s", profile_id, request.method)
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+
+    form = {
+        "server_url": profile.get("server_url") or "",
+        "username": profile.get("username") or "",
+        "password": "",
+        "profile_name": profile.get("name") or "",
+        "enabled": profile.get("enabled", True),
+    }
+
+    if request.method == "POST":
+        name = (
+            request.form.get("profile_name", "").strip()
+            or request.form.get("name", "").strip()
+        )
+        server_url = request.form.get("server_url", "").strip()
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        enabled = bool(request.form.get("enabled"))
+        form.update(
+            {
+                "server_url": server_url,
+                "username": username,
+                "password": "",
+                "profile_name": name,
+                "enabled": enabled,
+            }
+        )
+
+        if not name or not server_url or not username:
+            flash("Name, server URL and username are required.", "error")
+            return render_template("connections_edit.html", form=form, profile_id=profile_id)
+
+        try:
+            credential_store.update_profile(
+                profile_id,
+                name=name,
+                server_url=server_url,
+                username=username,
+                password=password if password else None,
+                enabled=enabled,
+            )
+            flash("Connection updated.", "success")
+            return redirect(url_for("connections"))
+        except Exception as exc:
+            app.logger.exception("Failed to update profile %s", profile_id)
+            flash(f"Failed to update connection: {exc}", "error")
+            return render_template("connections_edit.html", form=form, profile_id=profile_id)
+
+    return render_template("connections_edit.html", form=form, profile_id=profile_id)
+
+
 @app.route("/system/routes")
 def system_routes():
     """Show all registered Flask routes and metadata for discovery."""
