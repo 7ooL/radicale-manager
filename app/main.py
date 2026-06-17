@@ -333,6 +333,10 @@ def view_contacts(collection_path):
             book=book,
             contacts=contacts,
         )
+    except Exception as exc:
+        app.logger.exception("Unable to load contacts for %s", collection_path)
+        flash(f"Unable to load contacts: {exc}", "error")
+        return redirect(url_for("dashboard"))
 
 
 @app.route("/books/<path:collection_path>/contacts/<contact_filename>")
