@@ -21,10 +21,29 @@
                 <button class="button small secondary">Delete</button>
               </form>
             </div>
+            <form class="inline-action-form addressbook-create-form" method="post" action="{{ url_for('create_addressbook', profile_id=p.id) }}">
+              <label>
+                New address book
+                <input type="text" name="display_name" placeholder="Friends, Work, Vendors..." required />
+              </label>
+              <button class="button small" type="submit">Create</button>
+            </form>
             {% if p.books %}
-              <ul>
+              <ul class="managed-book-list">
                 {% for b in p.books %}
-                  <li>{{ b.display_name }} — {{ b.path }}</li>
+                  <li>
+                    <div class="managed-book-main">
+                      <strong>{{ b.display_name }}</strong>
+                      <span class="muted">{{ b.path }}</span>
+                    </div>
+                    <form class="inline-action-form" method="post" action="{{ url_for('rename_addressbook', profile_id=p.id, collection_path=b.path) }}">
+                      <input type="text" name="display_name" value="{{ b.display_name }}" required />
+                      <button class="button small" type="submit">Rename</button>
+                    </form>
+                    <form method="post" action="{{ url_for('delete_addressbook', profile_id=p.id, collection_path=b.path) }}" onsubmit="return confirm('Delete this address book and all contacts inside it?');">
+                      <button class="button small secondary" type="submit">Delete Book</button>
+                    </form>
+                  </li>
                 {% endfor %}
               </ul>
             {% endif %}

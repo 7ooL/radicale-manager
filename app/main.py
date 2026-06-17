@@ -2,6 +2,7 @@
 import os
 from datetime import datetime, timezone
 from io import BytesIO
+import re
 from dotenv import load_dotenv
 from flask import (
     Flask,
@@ -20,6 +21,7 @@ from contact_utils import (
     parse_vcard_contact,
     vcard_to_dict,
     build_vcard_from_fields,
+    duplicate_vcard,
     get_contact_filename,
 )
 from credential_store import CredentialStore
@@ -115,6 +117,7 @@ def build_navigation(current_endpoint=None):
                                 "profile_view_contacts",
                                 "profile_view_contact",
                                 "profile_edit_contact",
+                                "profile_contact_quality",
                                 "profile_import_vcf",
                                 "profile_export_addressbook",
                             )
@@ -174,6 +177,8 @@ def build_breadcrumbs(endpoint, view_args):
                 crumbs.append({"name": "Edit Contact", "url": None})
             elif endpoint == "profile_import_vcf":
                 crumbs.append({"name": "Import", "url": None})
+            elif endpoint == "profile_contact_quality":
+                crumbs.append({"name": "Quality Scan", "url": None})
             if crumbs[-1]["url"]:
                 crumbs[-1]["url"] = None
             return crumbs
@@ -356,6 +361,70 @@ def import_vcf_into_book(profile_id, collection_path, file_storage):
         "failed": failed,
         "imported": imported,
     }
+
+
+def slugify_addressbook_name(name):
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip()).strip("-").lower()
+    return slug or "addressbook"
+
+
+def normalize_duplicate_key(value):
+    return re.sub(r"\s+", " ", (value or "").strip().casefold())
+
+
+def normalize_phone_key(value):
+    return re.sub(r"\D+", "", value or "")
+
+
+def build_duplicate_report(contacts):
+    checks = {"email": {}, "phone": {}, "name": {}}
+    issues = []
+
+    for contact in contacts:
+        display = contact.get("full_name") or contact.get("filename") or "Unnamed contact"
+        entry = {
+            "display": display,
+            "filename": contact.get("filename"),
+            "email": ", ".join(contact.get("emails") or []),
+            "phone": ", ".join(contact.get("phones") or []),
+        }
+        for email in contact.get("emails") or []:
+            key = normalize_duplicate_key(email)
+            if key:
+                checks["email"].setdefault(key, []).append(entry)
+        for phone in contact.get("phones") or []:
+            key = normalize_phone_key(phone)
+            if key and len(key) >= 7:
+                checks["phone"].setdefault(key, []).append(entry)
+        name_key = normalize_duplicate_key(contact.get("full_name"))
+        if name_key:
+            checks["name"].setdefault(name_key, []).append(entry)
+
+        missing = []
+        if not contact.get("full_name"):
+            missing.append("name")
+        if not contact.get("emails"):
+            missing.append("email")
+        if not contact.get("phones"):
+            missing.append("phone")
+        if missing:
+            issues.append({**entry, "missing": missing})
+
+    duplicate_groups = []
+    for match_type, values in checks.items():
+        for value, matches in values.items():
+            if len(matches) > 1:
+                duplicate_groups.append(
+                    {
+                        "type": match_type.title(),
+                        "value": value,
+                        "count": len(matches),
+                        "contacts": matches,
+                    }
+                )
+
+    duplicate_groups.sort(key=lambda group: (-group["count"], group["type"], group["value"]))
+    return {"duplicates": duplicate_groups, "issues": issues}
 
 
 def make_client():
@@ -662,6 +731,94 @@ def refresh_addressbooks(profile_id):
     return redirect(url_for("connections"))
 
 
+@app.route("/connections/<int:profile_id>/addressbooks/create", methods=["POST"])
+def create_addressbook(profile_id):
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    if not profile.get("password"):
+        flash("Cannot create address book: profile has no stored password.", "error")
+        return redirect(url_for("connections"))
+
+    display_name = request.form.get("display_name", "").strip()
+    if not display_name:
+        flash("Address book name is required.", "error")
+        return redirect(url_for("connections"))
+
+    try:
+        existing_paths = {
+            book["path"]
+            for book in (credential_store.get_cached_address_books(profile_id) or [])
+        }
+        base_slug = slugify_addressbook_name(display_name)
+        path = f"{profile['username'].strip('/')}/{base_slug}"
+        suffix = 2
+        while path in existing_paths:
+            path = f"{profile['username'].strip('/')}/{base_slug}-{suffix}"
+            suffix += 1
+
+        client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
+        client.create_addressbook(path, display_name)
+        books = client.discover_addressbooks()
+        credential_store.save_or_update_address_books(profile_id, books)
+        flash("Address book created.", "success")
+    except Exception as exc:
+        app.logger.exception("Failed to create address book for profile %s", profile_id)
+        flash(f"Failed to create address book: {exc}", "error")
+    return redirect(url_for("connections"))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/rename", methods=["POST"])
+def rename_addressbook(profile_id, collection_path):
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    if not profile.get("password"):
+        flash("Cannot rename address book: profile has no stored password.", "error")
+        return redirect(url_for("connections"))
+
+    display_name = request.form.get("display_name", "").strip()
+    if not display_name:
+        flash("Address book name is required.", "error")
+        return redirect(url_for("connections"))
+
+    try:
+        client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
+        client.rename_addressbook(collection_path, display_name)
+        books = client.discover_addressbooks()
+        credential_store.save_or_update_address_books(profile_id, books)
+        flash("Address book renamed.", "success")
+    except Exception as exc:
+        app.logger.exception("Failed to rename address book %s", collection_path)
+        flash(f"Failed to rename address book: {exc}", "error")
+    return redirect(url_for("connections"))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/delete", methods=["POST"])
+def delete_addressbook(profile_id, collection_path):
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    if not profile.get("password"):
+        flash("Cannot delete address book: profile has no stored password.", "error")
+        return redirect(url_for("connections"))
+
+    try:
+        client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
+        client.delete_addressbook(collection_path)
+        books = client.discover_addressbooks()
+        credential_store.delete_address_books(profile_id)
+        credential_store.save_or_update_address_books(profile_id, books)
+        flash("Address book deleted.", "success")
+    except Exception as exc:
+        app.logger.exception("Failed to delete address book %s", collection_path)
+        flash(f"Failed to delete address book: {exc}", "error")
+    return redirect(url_for("connections"))
+
+
 @app.route("/dashboard")
 def dashboard():
     """Show enabled connection profiles with their discovered/cached address books."""
@@ -867,6 +1024,101 @@ def profile_view_contacts(profile_id, collection_path):
         app.logger.exception("Unable to load contacts for profile %s book %s", profile_id, collection_path)
         flash(f"Unable to load contacts: {exc}", "error")
         return redirect(url_for("dashboard"))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/bulk", methods=["POST"])
+def profile_bulk_contacts(profile_id, collection_path):
+    action = request.form.get("bulk_action")
+    filenames = [name for name in request.form.getlist("contact_filename") if name]
+    if not filenames:
+        flash("Select at least one contact.", "error")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+
+    if action == "delete":
+        deleted = 0
+        failed = []
+        for filename in filenames:
+            try:
+                client.delete_contact(f"{collection_path.rstrip('/')}/{filename}")
+                deleted += 1
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+        update_cached_contact_count(profile_id, collection_path, None)
+        if failed:
+            flash(f"Deleted {deleted} contacts. Failed: {'; '.join(failed)}", "error")
+        else:
+            flash(f"Deleted {deleted} contacts.", "success")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+    if action == "export":
+        exported = []
+        failed = []
+        for filename in filenames:
+            try:
+                vcard_text, _etag = client.get_contact(f"{collection_path.rstrip('/')}/{filename}")
+                exported.append(vcard_text.strip())
+            except Exception as exc:
+                failed.append(f"{filename}: {exc}")
+        if not exported:
+            flash(f"Export failed: {'; '.join(failed) or 'no contacts could be exported'}", "error")
+            return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+        if failed:
+            flash(f"Exported {len(exported)} contacts. Failed: {'; '.join(failed)}", "error")
+        content = "\n".join(exported) + "\n"
+        filename = f"radicale-selected-{datetime.now(timezone.utc).date()}.vcf"
+        return send_file(
+            BytesIO(content.encode("utf-8")),
+            download_name=filename,
+            mimetype="text/vcard",
+            as_attachment=True,
+        )
+
+    flash("Choose a bulk action.", "error")
+    return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/quality")
+def profile_contact_quality(profile_id, collection_path):
+    try:
+        client = get_client_for_profile(profile_id)
+    except Exception as exc:
+        app.logger.exception("Failed to build client for profile %s", profile_id)
+        flash(f"Unable to access profile: {exc}", "error")
+        return redirect(url_for("connections"))
+    try:
+        books = credential_store.get_cached_address_books(profile_id)
+        book = normalize_book_for_template(
+            next((b for b in books if b["path"] == collection_path), None),
+            fallback_path=collection_path,
+        )
+        contacts = []
+        for item in client.list_contacts(collection_path):
+            try:
+                parsed = vcard_to_dict(item["vcard"])
+                parsed["filename"] = get_contact_filename(item["href"])
+                contacts.append(parsed)
+            except Exception as exc:
+                app.logger.warning("Skipping invalid contact during quality scan: %s", exc)
+        report = build_duplicate_report(contacts)
+        return render_template(
+            "contact_quality.html",
+            title=f"Quality - {book.get('display_name')}",
+            book=book,
+            profile_id=profile_id,
+            contacts=contacts,
+            report=report,
+        )
+    except Exception as exc:
+        app.logger.exception("Unable to scan contacts for profile %s book %s", profile_id, collection_path)
+        flash(f"Unable to scan contacts: {exc}", "error")
+        return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>")
@@ -1084,6 +1336,30 @@ def profile_copy_contact(profile_id, collection_path, contact_filename):
         app.logger.exception("Copy failed")
         flash(f"Copy failed: {exc}", "error")
     return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/duplicate", methods=["POST"])
+def profile_duplicate_contact(profile_id, collection_path, contact_filename):
+    try:
+        client = get_client_for_profile(profile_id)
+        vcard_text, _etag = client.get_contact(f"{collection_path.rstrip('/')}/{contact_filename}")
+        new_uid, copied_vcard = duplicate_vcard(vcard_text)
+        new_filename = f"{new_uid}.vcf"
+        client.put_contact(collection_path, new_filename, copied_vcard)
+        update_cached_contact_count(profile_id, collection_path, None)
+        flash("Contact duplicated.", "success")
+        return redirect(
+            url_for(
+                "profile_view_contact",
+                profile_id=profile_id,
+                collection_path=collection_path,
+                contact_filename=new_filename,
+            )
+        )
+    except Exception as exc:
+        app.logger.exception("Duplicate failed")
+        flash(f"Duplicate failed: {exc}", "error")
+        return redirect(url_for("profile_view_contact", profile_id=profile_id, collection_path=collection_path, contact_filename=contact_filename))
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/move", methods=["POST"])

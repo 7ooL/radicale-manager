@@ -13,6 +13,10 @@ Radicale Manager is a Flask web UI for managing CardDAV contacts on a Radicale s
 - Feature registry and route explorer
 - Health and readiness endpoints
 
+## Roadmap
+
+Phase 2 and Phase 3 planning lives in [TODO.md](TODO.md). Use it as the working checklist for contact operations, bulk workflows, search, duplicate detection, contact quality, and backup/monitoring work.
+
 ## Local Quick Start
 
 Install dependencies:

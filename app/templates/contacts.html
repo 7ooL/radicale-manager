@@ -3,7 +3,22 @@
   <div class="card">
     <h1>Contacts in {{ book.name }}</h1>
     <p class="muted">{{ book.path }}</p>
+    <div class="button-row">
+      <a class="button secondary" href="{{ url_for('profile_contact_quality', profile_id=profile_id, collection_path=book.path) }}">Quality Scan</a>
+      <a class="button secondary" href="{{ url_for('profile_export_addressbook', profile_id=profile_id, collection_path=book.path) }}">Export Book</a>
+    </div>
     {% if contacts %}
+      <form id="bulk-contacts-form" method="post" action="{{ url_for('profile_bulk_contacts', profile_id=profile_id, collection_path=book.path) }}" class="bulk-form">
+        <label>
+          Bulk action
+          <select name="bulk_action" required>
+            <option value="">Choose action</option>
+            <option value="export">Export selected</option>
+            <option value="delete">Delete selected</option>
+          </select>
+        </label>
+        <button class="button small" type="submit">Apply</button>
+      </form>
       <div class="table-toolbar">
         <label class="filter-label">
           Filter contacts
@@ -14,6 +29,7 @@
       <table class="data-table sortable-table" id="contacts-table">
         <thead>
           <tr>
+            <th><input id="select-all-contacts" type="checkbox" aria-label="Select all contacts" /></th>
             <th><button class="sort-button active ascending" type="button" data-sort-key="name">Full Name</button></th>
             <th><button class="sort-button" type="button" data-sort-key="organization">Organization</button></th>
             <th><button class="sort-button" type="button" data-sort-key="email">Email</button></th>
@@ -32,6 +48,7 @@
               data-phone="{{ phone_text|lower }}"
               data-search="{{ (contact.full_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
             >
+              <td data-label="Select"><input form="bulk-contacts-form" name="contact_filename" value="{{ contact.filename }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" /></td>
               <td data-label="Full Name"><a href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">{{ contact.full_name }}</a></td>
               <td data-label="Organization">{{ contact.organization }}</td>
               <td data-label="Email">{{ email_text }}</td>
@@ -57,6 +74,7 @@
       const filter = document.getElementById('contact-filter');
       const count = document.getElementById('contact-filter-count');
       const empty = document.getElementById('no-contact-results');
+      const selectAll = document.getElementById('select-all-contacts');
       if (!table || !filter || !count || !empty) return;
 
       const tbody = table.querySelector('tbody');
@@ -107,6 +125,14 @@
         button.addEventListener('click', () => applySort(button.dataset.sortKey));
       });
       filter.addEventListener('input', applyFilter);
+      if (selectAll) {
+        selectAll.addEventListener('change', () => {
+          rows.forEach(row => {
+            const checkbox = row.querySelector('input[name="contact_filename"]');
+            if (checkbox && !row.hidden) checkbox.checked = selectAll.checked;
+          });
+        });
+      }
       applyFilter();
     })();
   </script>

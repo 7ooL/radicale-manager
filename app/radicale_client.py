@@ -1,5 +1,6 @@
 import logging
 import xml.etree.ElementTree as ET
+from html import escape
 from urllib.parse import urljoin
 import requests
 from requests.auth import HTTPBasicAuth
@@ -147,6 +148,70 @@ class RadicaleClient:
             headers["If-Match"] = if_match
         LOGGER.debug("Putting contact %s with ETag=%s", target_url, if_match)
         response = self.session.put(target_url, headers=headers, data=vcard_text.encode("utf-8"), timeout=30)
+        response.raise_for_status()
+        return response
+
+    def create_addressbook(self, path, display_name):
+        """Create a CardDAV address book collection."""
+        path = path.strip("/")
+        display_name = escape(display_name, quote=False)
+        target_url = self._build_url(path)
+        if not target_url.endswith("/"):
+            target_url += "/"
+        body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<D:mkcol xmlns:D="DAV:" xmlns:CR="urn:ietf:params:xml:ns:carddav">
+  <D:set>
+    <D:prop>
+      <D:resourcetype>
+        <D:collection/>
+        <CR:addressbook/>
+      </D:resourcetype>
+      <D:displayname>{display_name}</D:displayname>
+    </D:prop>
+  </D:set>
+</D:mkcol>"""
+        response = self.session.request(
+            "MKCOL",
+            target_url,
+            headers={"Content-Type": "application/xml"},
+            data=body.encode("utf-8"),
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response
+
+    def rename_addressbook(self, collection_path, display_name):
+        """Update the display name for an address book collection."""
+        collection_path = collection_path.strip("/")
+        display_name = escape(display_name, quote=False)
+        target_url = self._build_url(collection_path)
+        if not target_url.endswith("/"):
+            target_url += "/"
+        body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<D:propertyupdate xmlns:D="DAV:">
+  <D:set>
+    <D:prop>
+      <D:displayname>{display_name}</D:displayname>
+    </D:prop>
+  </D:set>
+</D:propertyupdate>"""
+        response = self.session.request(
+            "PROPPATCH",
+            target_url,
+            headers={"Content-Type": "application/xml"},
+            data=body.encode("utf-8"),
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response
+
+    def delete_addressbook(self, collection_path):
+        """Delete an address book collection and all contacts inside it."""
+        collection_path = collection_path.strip("/")
+        target_url = self._build_url(collection_path)
+        if not target_url.endswith("/"):
+            target_url += "/"
+        response = self.session.delete(target_url, timeout=30)
         response.raise_for_status()
         return response
 

@@ -262,6 +262,40 @@ textarea {
   margin-top: 0;
 }
 
+.bulk-form,
+.addressbook-create-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.bulk-form label,
+.addressbook-create-form label {
+  margin-bottom: 0;
+}
+
+.managed-book-list {
+  display: grid;
+  gap: 0.75rem;
+  padding-left: 0;
+}
+
+.managed-book-list li {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  list-style: none;
+}
+
+.managed-book-main {
+  display: grid;
+  gap: 0.15rem;
+}
+
 .tabs {
   display: flex;
   gap: 0.5rem;
@@ -305,6 +339,36 @@ textarea {
 
 .summary-card.full-width {
   grid-column: 1 / -1;
+}
+
+.quality-summary {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.quality-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quality-item {
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+}
+
+.quality-item h3 {
+  margin: 0 0 0.35rem;
+}
+
+.quality-item ul {
+  margin-bottom: 0;
+}
+
+.quality-item li {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.35rem 0;
 }
 
 .field-row {
@@ -669,6 +733,13 @@ textarea {
 
   .inline-action-form,
   .inline-action-form select,
+  .bulk-form,
+  .bulk-form label,
+  .bulk-form select,
+  .bulk-form .button,
+  .addressbook-create-form,
+  .addressbook-create-form label,
+  .addressbook-create-form .button,
   .inline-action-form .button,
   .detail-actions > .button {
     width: 100%;

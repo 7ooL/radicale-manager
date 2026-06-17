@@ -3,6 +3,7 @@ import vobject
 
 from app.contact_utils import (
     build_vcard_from_fields,
+    duplicate_vcard,
     extract_address,
     extract_emails,
     extract_note,
@@ -121,6 +122,25 @@ class ContactUtilsTest(unittest.TestCase):
         self.assertEqual(result["urls"], ["https://example.com"])
         self.assertEqual(result["categories"], ["Friends", "Work"])
         self.assertEqual(result["note"], "Editable note")
+
+    def test_duplicate_vcard_uses_new_uid_and_copy_name(self):
+        vcard_text = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:original-uid\n"
+            "FN:Jane Smith\n"
+            "N:Smith;Jane;;;\n"
+            "EMAIL:jane@example.com\n"
+            "END:VCARD\n"
+        )
+
+        new_uid, copied = duplicate_vcard(vcard_text)
+        result = vcard_to_dict(copied)
+
+        self.assertNotEqual(new_uid, "original-uid")
+        self.assertEqual(result["uid"], new_uid)
+        self.assertEqual(result["full_name"], "Jane Smith Copy")
+        self.assertEqual(result["emails"], ["jane@example.com"])
 
 
 if __name__ == "__main__":

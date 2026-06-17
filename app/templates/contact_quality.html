@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <div class="detail-header">
+      <div>
+        <h1>Quality Scan</h1>
+        <p class="muted">{{ book.name }} / {{ contacts|length }} contacts</p>
+      </div>
+      <div class="detail-actions">
+        <a class="button small secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Back to contacts</a>
+      </div>
+    </div>
+
+    <div class="summary-grid quality-summary">
+      <div class="summary-card">
+        <h2>Possible Duplicates</h2>
+        <p>{{ report.duplicates|length }}</p>
+      </div>
+      <div class="summary-card">
+        <h2>Contacts With Missing Fields</h2>
+        <p>{{ report.issues|length }}</p>
+      </div>
+    </div>
+
+    <section class="summary-card full-width">
+      <h2>Possible Duplicates</h2>
+      {% if report.duplicates %}
+        <div class="quality-list">
+          {% for group in report.duplicates %}
+            <article class="quality-item">
+              <h3>{{ group.type }} match: {{ group.value }}</h3>
+              <p class="muted">{{ group.count }} contacts</p>
+              <ul>
+                {% for contact in group.contacts %}
+                  <li>
+                    <strong>{{ contact.display }}</strong>
+                    {% if contact.email %}<span>{{ contact.email }}</span>{% endif %}
+                    {% if contact.phone %}<span>{{ contact.phone }}</span>{% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No duplicate email, phone, or exact-name matches found.</p>
+      {% endif %}
+    </section>
+
+    <section class="summary-card full-width">
+      <h2>Missing Fields</h2>
+      {% if report.issues %}
+        <div class="quality-list">
+          {% for issue in report.issues %}
+            <article class="quality-item">
+              <h3>{{ issue.display }}</h3>
+              <p>Missing {{ issue.missing|join(', ') }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No missing name, email, or phone issues found.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

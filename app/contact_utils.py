@@ -538,6 +538,23 @@ def build_vcard_from_fields(values):
     return card.serialize()
 
 
+def duplicate_vcard(vcard_text):
+    """Return a copied vCard with a new UID and a display name marked as a copy."""
+    card = vobject.readOne(vcard_text)
+    new_uid = str(uuid.uuid4())
+    if hasattr(card, "uid"):
+        card.uid.value = new_uid
+    else:
+        card.add("uid").value = new_uid
+
+    if hasattr(card, "fn") and card.fn.value:
+        card.fn.value = f"{card.fn.value} Copy"
+    else:
+        card.add("fn").value = f"{new_uid} Copy"
+
+    return new_uid, card.serialize()
+
+
 def get_contact_filename(contact_href):
     """Return the file name portion of a contact URL or href."""
     if not contact_href:
