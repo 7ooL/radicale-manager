@@ -341,6 +341,80 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.dashboard-metrics-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  margin-bottom: 1rem;
+}
+
+.dashboard-metric-card {
+  border-radius: 12px;
+  border: 1px solid #dbeafe;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.dashboard-metric-card h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px dashed #d1d5db;
+}
+
+.metric-row:last-child {
+  border-bottom: none;
+}
+
+.metric-row span {
+  color: #334155;
+}
+
+.metric-row strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.metric-good {
+  color: #047857;
+}
+
+.metric-warn {
+  color: #b45309;
+}
+
+.metric-muted {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.tone-overview {
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+}
+
+.tone-activity {
+  border-color: #fde68a;
+  background: linear-gradient(180deg, #fffbeb 0%, #fffdf5 100%);
+}
+
+.tone-health {
+  border-color: #bbf7d0;
+  background: linear-gradient(180deg, #f0fdf4 0%, #f7fee7 100%);
+}
+
+.tone-quality {
+  border-color: #fbcfe8;
+  background: linear-gradient(180deg, #fdf2f8 0%, #fff7ed 100%);
+}
+
 .quality-summary {
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 }

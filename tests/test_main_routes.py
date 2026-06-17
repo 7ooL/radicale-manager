@@ -299,6 +299,24 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Second Contact", response.data)
         self.assertNotIn(b"Demo Contact", response.data)
 
+    def test_quality_scan_persists_summary_for_dashboard_rollup(self):
+        quality_response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts/quality")
+        self.assertEqual(quality_response.status_code, 200)
+
+        quality_events = self.store.get_recent_events(limit=10, actions=["quality_scan"])
+        self.assertTrue(quality_events)
+        latest = quality_events[0]
+        self.assertEqual(latest["profile_id"], self.profile_id)
+        self.assertEqual(latest["collection_path"], "demo/source")
+        self.assertEqual(latest["details"].get("duplicate_groups"), 1)
+        self.assertEqual(latest["details"].get("issues"), 2)
+
+        dashboard = self.client.get("/dashboard")
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn(b"Duplicate Groups", dashboard.data)
+        self.assertIn(b"Last Quality Scan", dashboard.data)
+        self.assertNotIn(b"No scan results yet", dashboard.data)
+
 
 if __name__ == "__main__":
     unittest.main()

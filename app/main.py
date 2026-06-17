@@ -1147,7 +1147,7 @@ def dashboard():
         "total_address_books": total_address_books,
         "total_contacts": total_contacts,
         "duplicates": None,
-        "issues": 0,
+        "issues": None,
     }
     since = datetime.now(timezone.utc) - timedelta(days=7)
     since_iso = since.isoformat().replace("+00:00", "Z")
@@ -1172,6 +1172,37 @@ def dashboard():
         "last_backup_at": last_backup_at,
         "status": "healthy" if last_backup_at else "warning",
     }
+    quality_events = credential_store.get_recent_events(limit=500, actions=["quality_scan"])
+    latest_quality_by_book = {}
+    for event in quality_events:
+        key = (event.get("profile_id"), event.get("collection_path"))
+        if key not in latest_quality_by_book:
+            latest_quality_by_book[key] = event
+    if latest_quality_by_book:
+        metrics["duplicates"] = sum(
+            int((event.get("details") or {}).get("duplicate_groups", 0))
+            for event in latest_quality_by_book.values()
+        )
+        metrics["issues"] = sum(
+            int((event.get("details") or {}).get("issues", 0))
+            for event in latest_quality_by_book.values()
+        )
+        metrics["last_quality_scan_at"] = max(
+            (
+                parse_iso_timestamp(event.get("created_at"))
+                for event in latest_quality_by_book.values()
+            ),
+            default=None,
+        )
+        if metrics["last_quality_scan_at"]:
+            metrics["last_quality_scan_at"] = (
+                metrics["last_quality_scan_at"]
+                .astimezone(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+    else:
+        metrics["last_quality_scan_at"] = None
     recent_events = credential_store.get_recent_events(limit=8)
 
     return render_template(
@@ -1810,6 +1841,16 @@ def profile_contact_quality(profile_id, collection_path):
             except Exception as exc:
                 app.logger.warning("Skipping invalid contact during quality scan: %s", exc)
         report = build_duplicate_report(contacts)
+        log_event(
+            "quality_scan",
+            profile_id=profile_id,
+            collection_path=collection_path,
+            details={
+                "contacts_scanned": len(contacts),
+                "duplicate_groups": len(report.get("duplicates") or []),
+                "issues": len(report.get("issues") or []),
+            },
+        )
         return render_template(
             "contact_quality.html",
             title=f"Quality - {book.get('display_name')}",

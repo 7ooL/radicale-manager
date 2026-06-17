@@ -3,18 +3,63 @@
   <div class="card">
     <h1>Address Books</h1>
     {% if metrics %}
-      <div class="summary-card">
-        <div class="field-row"><strong>Connections</strong><span>{{ metrics.total_connections }}</span></div>
-        <div class="field-row"><strong>Address Books</strong><span>{{ metrics.total_address_books }}</span></div>
-        <div class="field-row"><strong>Contacts</strong><span>{{ metrics.total_contacts }}</span></div>
-        <div class="field-row"><strong>Recent Imports (7d)</strong><span>{{ metrics.recent_imports }}</span></div>
-        <div class="field-row"><strong>Recent Exports (7d)</strong><span>{{ metrics.recent_exports }}</span></div>
-        <div class="field-row"><strong>Recent Moves (7d)</strong><span>{{ metrics.recent_moves }}</span></div>
-        <div class="field-row"><strong>Recent Deletes (7d)</strong><span>{{ metrics.recent_deletes }}</span></div>
-        <div class="field-row"><strong>Connection Health</strong><span>{{ metrics.connection_health.healthy }} healthy / {{ metrics.connection_health.unhealthy }} unhealthy</span></div>
-        <div class="field-row"><strong>Backup Health</strong><span>{{ metrics.backup_health.status }}{% if metrics.backup_health.last_backup_at %} (last backup {{ metrics.backup_health.last_backup_at }}){% endif %}</span></div>
-        <div class="field-row"><strong>Duplicates</strong><span>{% if metrics.duplicates is none %}Not scanned{% else %}{{ metrics.duplicates }}{% endif %}</span></div>
-        <div class="field-row"><strong>Issues</strong><span>{{ metrics.issues }}</span></div>
+      <div class="dashboard-metrics-grid">
+        <section class="dashboard-metric-card tone-overview">
+          <h2>📚 Overview</h2>
+          <div class="metric-row"><span>Connections</span><strong>{{ metrics.total_connections }}</strong></div>
+          <div class="metric-row"><span>Address Books</span><strong>{{ metrics.total_address_books }}</strong></div>
+          <div class="metric-row"><span>Contacts</span><strong>{{ metrics.total_contacts }}</strong></div>
+        </section>
+
+        <section class="dashboard-metric-card tone-activity">
+          <h2>⚡ Activity (7d)</h2>
+          <div class="metric-row"><span>Imports</span><strong>{{ metrics.recent_imports }}</strong></div>
+          <div class="metric-row"><span>Exports</span><strong>{{ metrics.recent_exports }}</strong></div>
+          <div class="metric-row"><span>Moves</span><strong>{{ metrics.recent_moves }}</strong></div>
+          <div class="metric-row"><span>Deletes</span><strong>{{ metrics.recent_deletes }}</strong></div>
+        </section>
+
+        <section class="dashboard-metric-card tone-health">
+          <h2>🩺 Health</h2>
+          <div class="metric-row">
+            <span>Connections</span>
+            <strong>{{ metrics.connection_health.healthy }} healthy / {{ metrics.connection_health.unhealthy }} unhealthy</strong>
+          </div>
+          <div class="metric-row">
+            <span>Backups</span>
+            <strong class="{% if metrics.backup_health.status == 'healthy' %}metric-good{% else %}metric-warn{% endif %}">
+              {{ metrics.backup_health.status|capitalize }}
+            </strong>
+          </div>
+          <div class="metric-row">
+            <span>Last Backup</span>
+            <strong>{{ metrics.backup_health.last_backup_at or 'No backup yet' }}</strong>
+          </div>
+        </section>
+
+        <section class="dashboard-metric-card tone-quality">
+          <h2>🧪 Quality</h2>
+          <div class="metric-row">
+            <span>Duplicate Groups</span>
+            {% if metrics.duplicates is none %}
+              <strong class="metric-muted">No scan results yet</strong>
+            {% else %}
+              <strong>{{ metrics.duplicates }}</strong>
+            {% endif %}
+          </div>
+          <div class="metric-row">
+            <span>Issues</span>
+            {% if metrics.issues is none %}
+              <strong class="metric-muted">No scan results yet</strong>
+            {% else %}
+              <strong>{{ metrics.issues }}</strong>
+            {% endif %}
+          </div>
+          <div class="metric-row">
+            <span>Last Quality Scan</span>
+            <strong>{{ metrics.last_quality_scan_at or 'Never' }}</strong>
+          </div>
+        </section>
       </div>
     {% endif %}
     {% if profiles %}
