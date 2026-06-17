@@ -415,6 +415,97 @@ textarea {
   background: linear-gradient(180deg, #fdf2f8 0%, #fff7ed 100%);
 }
 
+.global-search-panel,
+.global-bulk-panel {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.global-search-panel {
+  grid-template-columns: minmax(12rem, 1.5fr) repeat(2, minmax(10rem, 1fr));
+}
+
+.global-bulk-panel {
+  grid-template-columns: minmax(12rem, 18rem) minmax(12rem, 1fr) auto;
+  align-items: end;
+}
+
+.panel-heading {
+  grid-column: 1 / -1;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #475569;
+  margin: 0.1rem 0 -0.2rem;
+}
+
+.search-field {
+  margin: 0;
+}
+
+.search-field > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.search-field-compact {
+  max-width: 14rem;
+}
+
+.search-field input,
+.search-field select {
+  margin-top: 0;
+}
+
+.search-field-wide {
+  grid-column: 1 / span 2;
+}
+
+.search-flags {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-flags .checkbox-label {
+  margin: 0;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+}
+
+.search-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+  justify-content: flex-start;
+}
+
+.table-toolbar .panel-heading {
+  margin: 0;
+}
+
+.global-contacts-table td[data-label="Actions"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.global-contacts-table td[data-label="Actions"] form {
+  display: inline-flex;
+}
+
 .quality-summary {
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 }
@@ -823,5 +914,27 @@ textarea {
   .code-block {
     max-width: 100%;
     overflow-x: auto;
+  }
+
+  .global-search-panel,
+  .global-bulk-panel {
+    grid-template-columns: 1fr;
+    padding: 0.75rem;
+  }
+
+  .search-field-wide,
+  .search-field-compact {
+    grid-column: auto;
+    max-width: none;
+  }
+
+  .search-actions,
+  .search-flags {
+    width: 100%;
+  }
+
+  .search-actions .button,
+  .search-actions a.button {
+    flex: 1 1 7rem;
   }
 }

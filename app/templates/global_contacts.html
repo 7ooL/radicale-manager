@@ -3,13 +3,14 @@
   <div class="card">
     <h1>All Contacts</h1>
     <p class="muted">{{ contacts|length }} contacts across enabled connections and cached address books.</p>
-    <form method="get" action="{{ url_for('global_contacts') }}" class="bulk-form">
-      <label>
-        Search
+    <form method="get" action="{{ url_for('global_contacts') }}" class="global-search-panel">
+      <div class="panel-heading">Search Scope</div>
+      <label class="search-field search-field-wide">
+        <span>Search</span>
         <input type="search" name="q" value="{{ search_filters.q }}" placeholder="Name, email, phone, company..." />
       </label>
-      <label>
-        Connection
+      <label class="search-field">
+        <span>Connection</span>
         <select name="profile_id">
           <option value="">All connections</option>
           {% for profile in profiles %}
@@ -17,8 +18,8 @@
           {% endfor %}
         </select>
       </label>
-      <label>
-        Address Book
+      <label class="search-field">
+        <span>Address Book</span>
         <select name="book_path">
           <option value="">All books</option>
           {% for pb in profile_books %}
@@ -26,14 +27,20 @@
           {% endfor %}
         </select>
       </label>
-      <label class="checkbox-label"><input type="checkbox" name="has_email" value="1" {% if search_filters.has_email %}checked{% endif %} /> Has email</label>
-      <label class="checkbox-label"><input type="checkbox" name="has_phone" value="1" {% if search_filters.has_phone %}checked{% endif %} /> Has phone</label>
-      <label>
-        Recently modified (days)
+      <label class="search-field search-field-compact">
+        <span>Recently modified (days)</span>
         <input type="number" min="0" name="recent_days" value="{{ search_filters.recent_days or '' }}" placeholder="7" />
       </label>
-      <button class="button small" type="submit">Search</button>
-      <a class="button small secondary" href="{{ url_for('global_contacts') }}">Reset</a>
+      <div class="panel-heading">Presence Filters</div>
+      <div class="search-flags">
+        <label class="checkbox-label"><input type="checkbox" name="has_email" value="1" {% if search_filters.has_email %}checked{% endif %} /> Has email</label>
+        <label class="checkbox-label"><input type="checkbox" name="has_phone" value="1" {% if search_filters.has_phone %}checked{% endif %} /> Has phone</label>
+      </div>
+      <div class="panel-heading">Search Actions</div>
+      <div class="search-actions">
+        <button class="button small" type="submit">Search</button>
+        <a class="button small secondary" href="{{ url_for('global_contacts') }}">Reset</a>
+      </div>
     </form>
 
     {% if errors %}
@@ -48,9 +55,10 @@
     {% endif %}
 
     {% if contacts %}
-      <form id="global-bulk-contacts-form" method="post" action="{{ url_for('global_bulk_contacts') }}" class="bulk-form">
-        <label>
-          Bulk action
+      <form id="global-bulk-contacts-form" method="post" action="{{ url_for('global_bulk_contacts') }}" class="global-bulk-panel">
+        <div class="panel-heading">Bulk Actions (Selected Contacts)</div>
+        <label class="search-field search-field-compact">
+          <span>Bulk action</span>
           <select name="bulk_action" required>
             <option value="">Choose action</option>
             <option value="export">Export selected</option>
@@ -62,8 +70,8 @@
           </select>
         </label>
         {% if destinations %}
-          <label id="global-bulk-destination-label" class="hidden">
-            Destination
+          <label id="global-bulk-destination-label" class="search-field hidden">
+            <span>Destination</span>
             <select name="dest" id="global-bulk-destination-select" disabled>
               <option value="">Choose destination</option>
               {% for destination in destinations %}
@@ -72,10 +80,13 @@
             </select>
           </label>
         {% endif %}
-        <button class="button small" type="submit">Apply</button>
+        <div class="search-actions">
+          <button class="button small" type="submit">Apply</button>
+        </div>
       </form>
 
       <div class="table-toolbar">
+        <div class="panel-heading">Quick Filter (Visible Rows)</div>
         <label class="filter-label">
           Filter contacts
           <input id="global-contact-filter" type="search" placeholder="Type a name, email, phone, company, book..." autocomplete="off" />
