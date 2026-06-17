@@ -10,7 +10,10 @@ LOGGER = logging.getLogger(__name__)
 class RadicaleClient:
     """Wrap Radicale HTTP interactions for address book and contact operations."""
 
-    NAMESPACES = {"D": "DAV:"}
+    NAMESPACES = {
+    "D": "DAV:",
+    "CR": "urn:ietf:params:xml:ns:carddav",
+    }
     PROP_BODY = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <D:propfind xmlns:D=\"DAV:\">
   <D:prop>
@@ -62,7 +65,8 @@ class RadicaleClient:
 
     def discover_addressbooks(self):
         """Discover address book collections available on the Radicale server."""
-        root = self.propfind("", depth=1)
+
+        root = self.propfind(self.username, depth=1)
         books = []
         response_count = 0
         for resp in root.findall("D:response", self.NAMESPACES):
@@ -73,21 +77,17 @@ class RadicaleClient:
             if href is None or not href.text:
                 LOGGER.debug("Skipping response #%d without href", response_count)
                 continue
-            resourcetype = resp.find(".//D:resourcetype", self.NAMESPACES)
-            if resourcetype is None:
-                LOGGER.debug("Skipping response #%d without resourcetype", response_count)
-                continue
-            if resourcetype.find("D:addressbook", self.NAMESPACES) is None:
-                LOGGER.debug("Skipping response #%d because no addressbook type was found", response_count)
-                continue
+
             displayname = resp.find(".//D:displayname", self.NAMESPACES)
             if displayname is None or not displayname.text:
                 LOGGER.debug("Skipping response #%d because displayname is missing", response_count)
                 continue
+
             path = href.text.strip("/")
             if not path:
                 LOGGER.debug("Skipping response #%d because href path is empty", response_count)
                 continue
+
             books.append(
                 {
                     "name": displayname.text,
