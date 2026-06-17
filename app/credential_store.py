@@ -81,6 +81,18 @@ class CredentialStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS features (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    status TEXT,
+                    description TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
             conn.commit()
         LOGGER.debug("CredentialStore database initialized")
 
@@ -258,6 +270,43 @@ class CredentialStore:
     def delete_address_books(self, profile_id):
         with self._connect() as conn:
             conn.execute("DELETE FROM address_books WHERE profile_id = ?", (profile_id,))
+            conn.commit()
+
+    # Feature registry persistence
+    def add_feature(self, name, status="planned", description=None):
+        now = datetime.utcnow().isoformat() + "Z"
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO features (name, status, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET status=excluded.status, description=excluded.description, updated_at=excluded.updated_at",
+                (name, status, description or "", now, now),
+            )
+            conn.commit()
+        LOGGER.info("Added/updated feature %s (%s)", name, status)
+
+    def get_features(self):
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "SELECT id, name, status, description, created_at, updated_at FROM features ORDER BY name"
+            )
+            rows = cursor.fetchall()
+            features = [
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "status": r[2],
+                    "description": r[3],
+                    "created_at": r[4],
+                    "updated_at": r[5],
+                }
+                for r in rows
+            ]
+        return features
+
+    def delete_feature(self, feature_id):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM features WHERE id = ?", (feature_id,))
+            conn.commit()
+        LOGGER.info("Deleted feature %s", feature_id)
             conn.commit()
         LOGGER.info("Deleted cached address books for profile %s", profile_id)
 

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Routes Explorer</h1>
+    <table class="table">
+      <thead><tr><th>Endpoint</th><th>Path</th><th>Methods</th><th>Description</th></tr></thead>
+      <tbody>
+        {% for r in routes %}
+          <tr>
+            <td>{{ r.endpoint }}</td>
+            <td>{{ r.path }}</td>
+            <td>{{ r.methods|join(', ') }}</td>
+            <td>{{ r.description }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

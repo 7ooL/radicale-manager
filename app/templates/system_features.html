@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Feature Registry</h1>
+
+    <form method="post" action="{{ url_for('system_features_add') }}">
+      <label>Feature name<br><input name="name" /></label>
+      <label>Status<br>
+        <select name="status">
+          <option value="planned">Planned</option>
+          <option value="in-development">In Progress</option>
+          <option value="complete">Complete</option>
+        </select>
+      </label>
+      <label>Description (optional)<br><input name="description" /></label>
+      <div class="button-row">
+        <button class="button" type="submit">Add / Update Feature</button>
+      </div>
+    </form>
+
+    <hr />
+
+    {% for status, items in grouped.items() %}
+      <h2>{{ status|capitalize }}</h2>
+      <ul>
+        {% for f in items %}
+          <li>
+            {{ f.name }}{% if f.description %} - {{ f.description }}{% endif %}
+            <form method="post" action="{{ url_for('system_features_delete', feature_id=f.id) }}" style="display:inline">
+              <button class="button small" type="submit">Delete</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+  </div>
+{% endblock %}

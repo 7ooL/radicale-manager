@@ -10,17 +10,40 @@
   <header class="page-header">
     <div class="content-wrap">
       <a class="logo" href="{{ url_for('login') }}">Radicale Manager</a>
-      {% if session.active_connection %}
-      <nav>
-        <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('import_vcf') }}">Import</a>
-        <a href="{{ url_for('logout') }}">Logout</a>
-      </nav>
-      {% endif %}
+      <div class="header-right">
+        {% if global_status %}
+        <div class="global-status">
+          <span class="version">Radicale Manager {{ global_status.app_version }}</span>
+          <span>🟢 App Healthy</span>
+          <span>🔗 {{ global_status.profiles }} Connections</span>
+          <span>📚 {{ global_status.address_books }} Address Books</span>
+        </div>
+        {% endif %}
+        <div class="quick-actions">
+          {% for a in quick_actions %}
+            <a class="quick-action" href="{{ url_for(a.endpoint) }}">{{ a.icon }} {{ a.name }}</a>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   </header>
 
-  <main class="content-wrap">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">Radicale Manager</div>
+      {% for group in navigation %}
+        <div class="nav-group">
+          <div class="nav-group-title">{{ group.group }}</div>
+          <ul>
+            {% for item in group.items %}
+              <li class="nav-item {% if item.active %}active{% endif %}"><a href="{{ url_for(item.endpoint) }}">{{ item.icon }} {{ item.name }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </aside>
+
+    <main class="content-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="alerts">
@@ -31,8 +54,21 @@
       {% endif %}
     {% endwith %}
 
+    {% if breadcrumbs %}
+      <nav class="breadcrumbs">
+        {% for c in breadcrumbs %}
+          {% if not loop.last and c.url %}
+            <a href="{{ c.url }}">{{ c.name }}</a> &rsaquo;
+          {% else %}
+            <span class="crumb-current">{{ c.name }}</span>
+          {% endif %}
+        {% endfor %}
+      </nav>
+    {% endif %}
+
     {% block content %}{% endblock %}
   </main>
+  </div>
 
   <footer class="footer">
     <div class="content-wrap">
