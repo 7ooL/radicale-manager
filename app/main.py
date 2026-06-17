@@ -87,7 +87,7 @@ def make_client():
 def login():
     """Render the login page and handle profile selection and authentication."""
     profiles = credential_store.get_profiles()
-    form["username"] = request.form.get("username", "").strip()
+
     app.logger.debug("Login page accessed via %s", request.method)
     form = {
         "server_url": app.config["DEFAULT_RADICALE_URL"],
@@ -114,6 +114,7 @@ def login():
         form["password"] = request.form.get("password", "")
         form["profile_name"] = request.form.get("profile_name", "").strip()
         form["save_profile"] = bool(request.form.get("save_profile"))
+        form["username"] = request.form.get("username", "").strip()
         app.logger.debug(
             "Login form submitted server=%s username=%s save_profile=%s direct_login=%s",
             form["server_url"],
