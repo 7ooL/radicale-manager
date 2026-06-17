@@ -509,7 +509,7 @@ def profile_view_contact(profile_id, collection_path, contact_filename):
             for pp in enabled:
                 books_list = credential_store.get_cached_address_books(pp["id"]) or []
                 for b in books_list:
-                    destinations.append({"profile_id": pp["id"], "profile_name": pp["name"], "path": b["path"], "display": f"{pp[\"name\"]} / {b['display_name']}"})
+                    destinations.append({"profile_id": pp["id"], "profile_name": pp["name"], "path": b["path"], "display": f"{pp['name']} / {b['display_name']}"})
         except Exception:
             destinations = []
         return render_template(
