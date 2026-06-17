@@ -172,6 +172,27 @@ textarea {
   border-collapse: collapse;
 }
 
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+
+.filter-label {
+  flex: 1 1 22rem;
+  margin-bottom: 0;
+}
+
+.compact {
+  margin: 0;
+}
+
+.hidden {
+  display: none;
+}
+
 .data-table th,
 .data-table td {
   padding: 0.85rem 0.75rem;
@@ -182,6 +203,36 @@ textarea {
 
 .data-table th {
   background: #f8fafc;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sort-button::after {
+  content: "↕";
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.sort-button.active.ascending::after {
+  content: "↑";
+  color: #2563eb;
+}
+
+.sort-button.active.descending::after {
+  content: "↓";
+  color: #2563eb;
 }
 
 .detail-header {
@@ -604,6 +655,16 @@ textarea {
 
   .data-table td[data-label="Actions"]::before {
     flex: 0 0 100%;
+  }
+
+  .table-toolbar {
+    display: grid;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .filter-label {
+    flex: none;
   }
 
   .inline-action-form,

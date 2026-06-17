@@ -729,7 +729,7 @@ def dashboard():
         "total_connections": total_connections,
         "total_address_books": total_address_books,
         "total_contacts": total_contacts,
-        "duplicates": 0,
+        "duplicates": None,
         "issues": 0,
     }
 
@@ -848,6 +848,13 @@ def profile_view_contacts(profile_id, collection_path):
                     exc,
                 )
                 continue
+        contacts.sort(
+            key=lambda contact: (
+                (contact.get("full_name") or "").casefold(),
+                (contact.get("organization") or "").casefold(),
+                (contact.get("filename") or "").casefold(),
+            )
+        )
         update_cached_contact_count(profile_id, collection_path, len(contacts))
         return render_template(
             "contacts.html",

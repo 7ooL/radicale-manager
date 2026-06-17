@@ -4,23 +4,38 @@
     <h1>Contacts in {{ book.name }}</h1>
     <p class="muted">{{ book.path }}</p>
     {% if contacts %}
-      <table class="data-table">
+      <div class="table-toolbar">
+        <label class="filter-label">
+          Filter contacts
+          <input id="contact-filter" type="search" placeholder="Type a name, email, phone, company..." autocomplete="off" />
+        </label>
+        <p class="muted compact" id="contact-filter-count">{{ contacts|length }} contacts</p>
+      </div>
+      <table class="data-table sortable-table" id="contacts-table">
         <thead>
           <tr>
-            <th>Full Name</th>
-            <th>Organization</th>
-            <th>Email</th>
-            <th>Phone</th>
+            <th><button class="sort-button active ascending" type="button" data-sort-key="name">Full Name</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="organization">Organization</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="email">Email</button></th>
+            <th><button class="sort-button" type="button" data-sort-key="phone">Phone</button></th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for contact in contacts %}
-            <tr>
+            {% set email_text = contact.emails|join(', ') %}
+            {% set phone_text = contact.phones|join(', ') %}
+            <tr
+              data-name="{{ contact.full_name|lower }}"
+              data-organization="{{ contact.organization|lower }}"
+              data-email="{{ email_text|lower }}"
+              data-phone="{{ phone_text|lower }}"
+              data-search="{{ (contact.full_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
+            >
               <td data-label="Full Name"><a href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">{{ contact.full_name }}</a></td>
               <td data-label="Organization">{{ contact.organization }}</td>
-              <td data-label="Email">{{ contact.emails|join(', ') }}</td>
-              <td data-label="Phone">{{ contact.phones|join(', ') }}</td>
+              <td data-label="Email">{{ email_text }}</td>
+              <td data-label="Phone">{{ phone_text }}</td>
               <td data-label="Actions">
                 <a class="button small" href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">View</a>
                 <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
@@ -30,8 +45,69 @@
           {% endfor %}
         </tbody>
       </table>
+      <p class="muted hidden" id="no-contact-results">No contacts match that filter.</p>
     {% else %}
       <p>No contacts found in this address book.</p>
     {% endif %}
   </div>
+
+  <script>
+    (() => {
+      const table = document.getElementById('contacts-table');
+      const filter = document.getElementById('contact-filter');
+      const count = document.getElementById('contact-filter-count');
+      const empty = document.getElementById('no-contact-results');
+      if (!table || !filter || !count || !empty) return;
+
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      let sortKey = 'name';
+      let sortDirection = 'ascending';
+
+      const normalize = value => (value || '').toString().trim().toLocaleLowerCase();
+
+      function applyFilter() {
+        const query = normalize(filter.value);
+        let visible = 0;
+        rows.forEach(row => {
+          const matches = !query || normalize(row.dataset.search).includes(query);
+          row.hidden = !matches;
+          if (matches) visible += 1;
+        });
+        count.textContent = `${visible} of ${rows.length} contacts`;
+        empty.classList.toggle('hidden', visible !== 0);
+      }
+
+      function applySort(nextKey) {
+        if (nextKey === sortKey) {
+          sortDirection = sortDirection === 'ascending' ? 'descending' : 'ascending';
+        } else {
+          sortKey = nextKey;
+          sortDirection = 'ascending';
+        }
+
+        const direction = sortDirection === 'ascending' ? 1 : -1;
+        rows.sort((a, b) => {
+          const primary = normalize(a.dataset[sortKey]).localeCompare(normalize(b.dataset[sortKey]));
+          if (primary !== 0) return primary * direction;
+          return normalize(a.dataset.name).localeCompare(normalize(b.dataset.name));
+        });
+        rows.forEach(row => tbody.appendChild(row));
+
+        table.querySelectorAll('.sort-button').forEach(button => {
+          const active = button.dataset.sortKey === sortKey;
+          button.classList.toggle('active', active);
+          button.classList.toggle('ascending', active && sortDirection === 'ascending');
+          button.classList.toggle('descending', active && sortDirection === 'descending');
+        });
+        applyFilter();
+      }
+
+      table.querySelectorAll('.sort-button').forEach(button => {
+        button.addEventListener('click', () => applySort(button.dataset.sortKey));
+      });
+      filter.addEventListener('input', applyFilter);
+      applyFilter();
+    })();
+  </script>
 {% endblock %}
