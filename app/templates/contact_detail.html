@@ -7,8 +7,8 @@
         <p class="muted">{{ book.name }} / {{ contact.filename }}</p>
       </div>
       <div class="detail-actions">
-        <a class="button small" href="{{ url_for('edit_contact', collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
-        <a class="button small secondary" href="{{ url_for('view_contacts', collection_path=book.path) }}">Back to list</a>
+        <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
+        <a class="button small secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Back to list</a>
         {% if destinations %}
           <form method="post" action="{{ url_for('profile_copy_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}" style="display:inline-block; margin-left:8px;">
             <select name="dest">

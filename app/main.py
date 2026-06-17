@@ -578,7 +578,11 @@ def debug_profiles():
 
 @app.route("/import", methods=["GET", "POST"])
 def import_vcf():
-    """Import contacts from an uploaded VCF into a selected Radicale address book."""
+    """LEGACY: Import contacts from an uploaded VCF using session-based connection.
+    
+    DEPRECATED: Use profile_import_vcf() instead, which uses saved profiles.
+    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
+    """
     app.logger.debug("Import page requested via %s", request.method)
     client = make_client()
     if not client:
@@ -908,7 +912,11 @@ def profile_move_contact(profile_id, collection_path, contact_filename):
 
 @app.route("/books/<path:collection_path>/contacts")
 def view_contacts(collection_path):
-    """Show all contacts stored in a selected Radicale address book."""
+    """LEGACY: Show all contacts using session-based connection.
+    
+    DEPRECATED: Use profile_view_contacts() instead, which uses saved profiles.
+    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
+    """
     app.logger.debug("View contacts for path: %s", collection_path)
     client = make_client()
     if not client:
@@ -952,7 +960,11 @@ def view_contacts(collection_path):
 
 @app.route("/books/<path:collection_path>/contacts/<contact_filename>")
 def view_contact(collection_path, contact_filename):
-    """Show detail information for a single contact."""
+    """LEGACY: Show detail information for a single contact using session-based connection.
+    
+    DEPRECATED: Use profile_view_contact() instead, which uses saved profiles.
+    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
+    """
     app.logger.debug("View contact requested: %s/%s", collection_path, contact_filename)
     client = make_client()
     if not client:
@@ -989,7 +1001,11 @@ def view_contact(collection_path, contact_filename):
 
 @app.route("/books/<path:collection_path>/export")
 def export_addressbook(collection_path):
-    """Export the selected address book as a VCF download."""
+    """LEGACY: Export the selected address book using session-based connection.
+    
+    DEPRECATED: Use profile_export_addressbook() instead, which uses saved profiles.
+    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
+    """
     app.logger.debug("Export requested for path: %s", collection_path)
     client = make_client()
     if not client:
@@ -1020,7 +1036,11 @@ def export_addressbook(collection_path):
 
 @app.route("/books/<path:collection_path>/contacts/<contact_filename>/edit", methods=["GET", "POST"])
 def edit_contact(collection_path, contact_filename):
-    """Edit a contact by loading it from Radicale and writing back updates."""
+    """LEGACY: Edit a contact using session-based connection.
+    
+    DEPRECATED: Use profile_edit_contact() instead, which uses saved profiles.
+    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
+    """
     app.logger.debug("Edit contact requested: %s/%s", collection_path, contact_filename)
     client = make_client()
     if not client:
@@ -1066,7 +1086,11 @@ def edit_contact(collection_path, contact_filename):
 
 @app.route("/books/<path:collection_path>/contacts/<contact_filename>/delete")
 def delete_contact(collection_path, contact_filename):
-    """Delete a contact from a Radicale collection."""
+    """LEGACY: Delete a contact using session-based connection.
+    
+    DEPRECATED: Use profile_delete_contact() instead, which uses saved profiles.
+    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
+    """
     app.logger.debug("Delete contact requested: %s/%s", collection_path, contact_filename)
     client = make_client()
     if not client:

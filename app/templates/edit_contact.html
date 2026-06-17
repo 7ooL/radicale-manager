@@ -34,7 +34,7 @@
       </label>
       <div class="button-row">
         <button type="submit">Save</button>
-        <a class="button secondary" href="{{ url_for('view_contacts', collection_path=book.path) }}">Cancel</a>
+        <a class="button secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Cancel</a>
       </div>
     </form>
   </div>
