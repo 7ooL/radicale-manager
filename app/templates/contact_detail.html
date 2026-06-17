@@ -10,7 +10,7 @@
         <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
         <a class="button small secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Back to list</a>
         {% if destinations %}
-          <form method="post" action="{{ url_for('profile_copy_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}" style="display:inline-block; margin-left:8px;">
+          <form class="inline-action-form" method="post" action="{{ url_for('profile_copy_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
             <select name="dest">
               {% for d in destinations %}
                 <option value="{{ d.profile_id }}::{{ d.path }}">{{ d.display }}</option>
@@ -18,7 +18,7 @@
             </select>
             <button class="button small" type="submit">Copy to...</button>
           </form>
-          <form method="post" action="{{ url_for('profile_move_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}" style="display:inline-block; margin-left:8px;">
+          <form class="inline-action-form" method="post" action="{{ url_for('profile_move_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
             <select name="dest">
               {% for d in destinations %}
                 <option value="{{ d.profile_id }}::{{ d.path }}">{{ d.display }}</option>

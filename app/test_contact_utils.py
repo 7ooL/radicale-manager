@@ -43,8 +43,10 @@ class ContactUtilsTest(unittest.TestCase):
     def test_vcard_to_dict_handles_malformed_vcard(self):
         vcard_text = "BEGIN:VCARD\nINVALID_LINE\nEND:VCARD\n"
 
-        result = vcard_to_dict(vcard_text)
+        with self.assertLogs("app.contact_utils", level="WARNING") as captured:
+            result = vcard_to_dict(vcard_text)
 
+        self.assertIn("Unable to parse vCard for vcard_to_dict", captured.output[0])
         self.assertEqual(result["uid"], "")
         self.assertEqual(result["full_name"], "")
         self.assertEqual(result["emails"], [])

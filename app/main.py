@@ -83,35 +83,106 @@ except Exception:
     app.logger.warning("Failed to seed feature registry, continuing with empty registry")
 
 def build_navigation(current_endpoint=None):
-    # Group by 'group' and mark active endpoint
     groups = {}
     for item in NAV_ITEMS:
         group = item.get("group", "Other")
         entry = dict(item)
         entry["active"] = (item.get("endpoint") == current_endpoint)
+        entry["url"] = url_for(item["endpoint"])
         groups.setdefault(group, []).append(entry)
-    # Convert to list of tuples for deterministic ordering
-    nav = [{"group": g, "entries": groups[g]} for g in sorted(groups.keys())]
+
+    try:
+        active_profile_id = request.view_args.get("profile_id") if request.view_args else None
+        active_book_path = request.view_args.get("collection_path") if request.view_args else None
+        for profile in credential_store.get_enabled_profiles():
+            books = credential_store.get_cached_address_books(profile["id"]) or []
+            for book in books:
+                normalized = normalize_book_for_template(book)
+                groups.setdefault("General", []).append(
+                    {
+                        "name": normalized["display_name"],
+                        "meta": profile["name"],
+                        "icon": "📘",
+                        "url": url_for(
+                            "profile_view_contacts",
+                            profile_id=profile["id"],
+                            collection_path=normalized["path"],
+                        ),
+                        "active": (
+                            current_endpoint
+                            in (
+                                "profile_view_contacts",
+                                "profile_view_contact",
+                                "profile_edit_contact",
+                                "profile_import_vcf",
+                                "profile_export_addressbook",
+                            )
+                            and active_profile_id == profile["id"]
+                            and active_book_path == normalized["path"]
+                        ),
+                    }
+                )
+    except Exception:
+        app.logger.debug("Unable to build address book navigation", exc_info=True)
+
+    group_order = ["General", "Administration", "System"]
+    nav = [
+        {"group": group, "entries": groups[group]}
+        for group in group_order
+        if group in groups
+    ]
+    nav.extend(
+        {"group": group, "entries": groups[group]}
+        for group in sorted(groups.keys())
+        if group not in group_order
+    )
     return nav
 
 def build_breadcrumbs(endpoint, view_args):
-    # Simple breadcrumbs: match endpoint against NAV_ITEMS
-    crumbs = []
-    if endpoint:
-        # top-level Dashboard
-        crumbs.append({"name": "Dashboard", "url": url_for("dashboard")})
-        # find matching nav item
-        for item in NAV_ITEMS:
-            if item["endpoint"] == endpoint:
-                crumbs.append({"name": item["name"], "url": url_for(item["endpoint"])})
-                break
-        # append dynamic parts if present (e.g., profile or book)
-        if view_args:
-            for k, v in view_args.items():
-                try:
-                    crumbs.append({"name": str(v), "url": None})
-                except Exception:
-                    pass
+    if not endpoint or endpoint == "dashboard":
+        return []
+
+    crumbs = [{"name": "Dashboard", "url": url_for("dashboard")}]
+    view_args = view_args or {}
+
+    profile_id = view_args.get("profile_id")
+    collection_path = view_args.get("collection_path")
+    if profile_id and collection_path:
+        try:
+            profile = credential_store.get_profile(profile_id)
+            books = credential_store.get_cached_address_books(profile_id) or []
+            book = normalize_book_for_template(
+                next((b for b in books if b["path"] == collection_path), None),
+                fallback_path=collection_path,
+            )
+            if profile:
+                crumbs.append({"name": profile["name"], "url": url_for("dashboard")})
+            crumbs.append(
+                {
+                    "name": book["display_name"],
+                    "url": url_for(
+                        "profile_view_contacts",
+                        profile_id=profile_id,
+                        collection_path=collection_path,
+                    ),
+                }
+            )
+            if endpoint == "profile_view_contact":
+                crumbs.append({"name": "Contact", "url": None})
+            elif endpoint == "profile_edit_contact":
+                crumbs.append({"name": "Edit Contact", "url": None})
+            elif endpoint == "profile_import_vcf":
+                crumbs.append({"name": "Import", "url": None})
+            if crumbs[-1]["url"]:
+                crumbs[-1]["url"] = None
+            return crumbs
+        except Exception:
+            app.logger.debug("Unable to build profile breadcrumb", exc_info=True)
+
+    for item in NAV_ITEMS:
+        if item["endpoint"] == endpoint:
+            crumbs.append({"name": item["name"], "url": None})
+            return crumbs
     return crumbs
 
 

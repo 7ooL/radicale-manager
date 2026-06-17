@@ -12,6 +12,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .page-header {
@@ -49,8 +50,8 @@ main {
 
 .card {
   background: white;
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 8px;
+  padding: 1.25rem;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   margin-bottom: 1.5rem;
 }
@@ -93,16 +94,16 @@ textarea {
 .button-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
 }
 
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.85rem 1.1rem;
-  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
   text-decoration: none;
   background: #2563eb;
   color: white;
@@ -122,13 +123,48 @@ textarea {
 
 .grid-list {
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .book-card {
-  padding: 1.25rem;
+  padding: 1rem;
   background: #f8fafc;
-  border-radius: 16px;
+  border-radius: 8px;
+}
+
+.book-card h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+.profile-block {
+  margin-top: 1.5rem;
+}
+
+.profile-meta,
+.book-meta {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.profile-meta {
+  margin-bottom: 0.85rem;
+}
+
+.profile-meta span,
+.meta-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.meta-row strong {
+  min-width: 4.75rem;
+}
+
+.meta-row span {
+  overflow-wrap: anywhere;
 }
 
 .data-table {
@@ -141,6 +177,7 @@ textarea {
   padding: 0.85rem 0.75rem;
   border-bottom: 1px solid #e5e7eb;
   text-align: left;
+  vertical-align: top;
 }
 
 .data-table th {
@@ -159,6 +196,19 @@ textarea {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.inline-action-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.inline-action-form select {
+  min-width: 12rem;
+  width: auto;
+  margin-top: 0;
 }
 
 .tabs {
@@ -194,8 +244,12 @@ textarea {
 
 .summary-card {
   background: #f8fafc;
-  padding: 1rem;
-  border-radius: 16px;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+}
+
+.summary-card h2 {
+  margin-top: 0;
 }
 
 .summary-card.full-width {
@@ -207,6 +261,7 @@ textarea {
   gap: 0.75rem;
   padding: 0.45rem 0;
   border-bottom: 1px solid #e5e7eb;
+  overflow-wrap: anywhere;
 }
 
 .field-row:last-child {
@@ -223,7 +278,7 @@ textarea {
 .property-item {
   margin: 0.75rem 0;
   padding: 0.85rem;
-  border-radius: 14px;
+  border-radius: 8px;
   background: white;
 }
 
@@ -296,9 +351,11 @@ textarea {
 .layout {
   display: flex;
   gap: 1rem;
+  align-items: flex-start;
 }
 .sidebar {
   width: 220px;
+  flex: 0 0 220px;
   padding: 1rem;
 }
 .sidebar-logo {
@@ -318,8 +375,16 @@ textarea {
   margin: 0.25rem 0;
 }
 .nav-item a {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.25rem 0;
   text-decoration: none;
   color: #111827;
+}
+.nav-item-meta {
+  color: #6b7280;
+  font-size: 0.78rem;
+  padding-left: 1.6rem;
 }
 .nav-item.active a {
   font-weight: 700;
@@ -329,6 +394,7 @@ textarea {
 .breadcrumbs {
   margin: 0.5rem 0 1rem 0;
   color: #6b7280;
+  overflow-wrap: anywhere;
 }
 .breadcrumbs a {
   color: #374151;
@@ -343,11 +409,13 @@ textarea {
   display: flex;
   gap: 1rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 .global-status {
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  flex-wrap: wrap;
   color: #e6eefc;
 }
 .quick-actions .quick-action {
@@ -358,7 +426,185 @@ textarea {
 
 /* Responsive: collapse sidebar into top menu */
 @media (max-width: 900px) {
-  .layout { flex-direction: column; }
-  .sidebar { width: 100%; order: 2; }
-  .content-wrap { order: 3; }
+  .page-header .content-wrap {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .header-right,
+  .global-status {
+    gap: 0.5rem 0.8rem;
+  }
+
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: min(1120px, 100% - 2rem);
+    flex: none;
+    order: 2;
+    margin: 0 auto;
+    padding: 1rem 0 0;
+  }
+
+  .sidebar-logo {
+    display: none;
+  }
+
+  .nav-group {
+    margin-bottom: 0.75rem;
+  }
+
+  .nav-group ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.35rem 0.65rem;
+    padding-left: 0;
+    margin: 0;
+  }
+
+  .nav-item a {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+
+  .nav-item.active a {
+    background: #eff6ff;
+  }
+
+  main.content-wrap {
+    order: 3;
+    padding-top: 1rem;
+  }
+
+  .footer .content-wrap {
+    width: min(1120px, 100% - 2rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .content-wrap {
+    width: min(100% - 1rem, 1120px);
+  }
+
+  .page-header {
+    padding: 0.75rem 0;
+  }
+
+  .logo {
+    font-size: 1rem;
+  }
+
+  .global-status .version {
+    flex-basis: 100%;
+  }
+
+  main {
+    padding: 0.75rem 0;
+  }
+
+  .card {
+    padding: 0.85rem;
+    box-shadow: none;
+  }
+
+  .card h1 {
+    font-size: 1.65rem;
+    line-height: 1.15;
+  }
+
+  .button-row,
+  .detail-actions,
+  .tabs {
+    gap: 0.45rem;
+  }
+
+  .button,
+  .button.small,
+  .tab {
+    min-height: 2.5rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .button-row .button {
+    flex: 1 1 7rem;
+  }
+
+  .profile-meta span,
+  .meta-row,
+  .field-row {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .meta-row strong,
+  .field-label {
+    min-width: 0;
+  }
+
+  .data-table,
+  .data-table thead,
+  .data-table tbody,
+  .data-table tr,
+  .data-table th,
+  .data-table td {
+    display: block;
+  }
+
+  .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .data-table tr {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .data-table td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 35%) 1fr;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    border-bottom: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: #374151;
+  }
+
+  .data-table td[data-label="Actions"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding-top: 0.65rem;
+  }
+
+  .data-table td[data-label="Actions"]::before {
+    flex: 0 0 100%;
+  }
+
+  .inline-action-form,
+  .inline-action-form select,
+  .inline-action-form .button,
+  .detail-actions > .button {
+    width: 100%;
+  }
+
+  .raw-view,
+  .code-block {
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }

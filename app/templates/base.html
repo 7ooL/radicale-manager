@@ -36,7 +36,12 @@
           <div class="nav-group-title">{{ group.group }}</div>
           <ul>
             {% for item in group.entries %}
-              <li class="nav-item {% if item.active %}active{% endif %}"><a href="{{ url_for(item.endpoint) }}">{{ item.icon }} {{ item.name }}</a></li>
+              <li class="nav-item {% if item.active %}active{% endif %}">
+                <a href="{{ item.url or url_for(item.endpoint) }}">
+                  <span>{{ item.icon }} {{ item.name }}</span>
+                  {% if item.meta %}<span class="nav-item-meta">{{ item.meta }}</span>{% endif %}
+                </a>
+              </li>
             {% endfor %}
           </ul>
         </div>

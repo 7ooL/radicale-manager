@@ -4,7 +4,6 @@
     <h1>Address Books</h1>
     {% if metrics %}
       <div class="summary-card">
-        <h2>Radicale Manager {{ metrics.app_version or '' }}</h2>
         <div class="field-row"><strong>Connections</strong><span>{{ metrics.total_connections }}</span></div>
         <div class="field-row"><strong>Address Books</strong><span>{{ metrics.total_address_books }}</span></div>
         <div class="field-row"><strong>Contacts</strong><span>{{ metrics.total_contacts }}</span></div>
@@ -16,14 +15,25 @@
       {% for profile in profiles %}
         <section class="profile-block">
           <h2>{{ profile.name }}</h2>
-          <p><strong>Server</strong><br>{{ profile.server_url }} &nbsp; <strong>User</strong> {{ profile.username }}</p>
+          <div class="profile-meta">
+            <span><strong>Server</strong> {{ profile.server_url }}</span>
+            <span><strong>User</strong> {{ profile.username }}</span>
+          </div>
           {% if profile.books %}
             <div class="grid-list">
               {% for book in profile.books %}
                 <article class="book-card">
                   <h3>{{ book.display_name }}</h3>
-                  <p><strong>Path</strong><br>{{ book.path }}</p>
-                  <p><strong>Contacts</strong><br>{% if book.contact_count is not none %}{{ book.contact_count }}{% else %}unknown{% endif %}</p>
+                  <div class="book-meta">
+                    <div class="meta-row">
+                      <strong>Path</strong>
+                      <span>{{ book.path }}</span>
+                    </div>
+                    <div class="meta-row">
+                      <strong>Contacts</strong>
+                      <span>{% if book.contact_count is not none %}{{ book.contact_count }}{% else %}unknown{% endif %}</span>
+                    </div>
+                  </div>
                   <div class="button-row">
                     <a class="button" href="{{ url_for('profile_view_contacts', profile_id=profile.id, collection_path=book.path) }}">View</a>
                     <a class="button" href="{{ url_for('profile_import_vcf', profile_id=profile.id, collection_path=book.path) }}">Import</a>

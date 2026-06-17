@@ -17,7 +17,15 @@
     {
       "label": "Run local app",
       "type": "shell",
-      "command": "python app\\main.py",
+      "command": "python",
+      "args": [
+        "app/main.py"
+      ],
+      "options": {
+        "env": {
+          "PROFILE_STORE_PATH": "instance/local-profiles.db"
+        }
+      },
       "problemMatcher": []
     }
   ]

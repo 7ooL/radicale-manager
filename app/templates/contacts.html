@@ -17,11 +17,11 @@
         <tbody>
           {% for contact in contacts %}
             <tr>
-              <td><a href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">{{ contact.full_name }}</a></td>
-              <td>{{ contact.organization }}</td>
-              <td>{{ contact.emails|join(', ') }}</td>
-              <td>{{ contact.phones|join(', ') }}</td>
-              <td>
+              <td data-label="Full Name"><a href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">{{ contact.full_name }}</a></td>
+              <td data-label="Organization">{{ contact.organization }}</td>
+              <td data-label="Email">{{ contact.emails|join(', ') }}</td>
+              <td data-label="Phone">{{ contact.phones|join(', ') }}</td>
+              <td data-label="Actions">
                 <a class="button small" href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">View</a>
                 <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
                 <form method="post" action="{{ url_for('profile_delete_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}" style="display:inline"><button class="button small" type="submit">Delete</button></form>
