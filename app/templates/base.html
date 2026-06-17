@@ -35,7 +35,7 @@
         <div class="nav-group">
           <div class="nav-group-title">{{ group.group }}</div>
           <ul>
-            {% for item in group.items %}
+            {% for item in group.entries %}
               <li class="nav-item {% if item.active %}active{% endif %}"><a href="{{ url_for(item.endpoint) }}">{{ item.icon }} {{ item.name }}</a></li>
             {% endfor %}
           </ul>

@@ -89,7 +89,7 @@ def build_navigation(current_endpoint=None):
         entry["active"] = (item.get("endpoint") == current_endpoint)
         groups.setdefault(group, []).append(entry)
     # Convert to list of tuples for deterministic ordering
-    nav = [{"group": g, "items": groups[g]} for g in sorted(groups.keys())]
+    nav = [{"group": g, "entries": groups[g]} for g in sorted(groups.keys())]
     return nav
 
 def build_breadcrumbs(endpoint, view_args):
