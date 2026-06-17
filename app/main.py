@@ -308,9 +308,18 @@ def view_contacts(collection_path):
             return redirect(url_for("dashboard"))
         contacts = []
         for item in client.list_contacts(collection_path):
-            parsed = vcard_to_dict(item["vcard"])
-            parsed["filename"] = get_contact_filename(item["href"])
-            contacts.append(parsed)
+            try:
+                parsed = vcard_to_dict(item["vcard"])
+                parsed["filename"] = get_contact_filename(item["href"])
+                contacts.append(parsed)
+            except Exception as exc:
+                app.logger.warning(
+                    "Skipping invalid contact %s in %s: %s",
+                    item.get("href"),
+                    collection_path,
+                    exc,
+                )
+                continue
         app.logger.debug("Loaded %d contacts for book %s", len(contacts), collection_path)
         return render_template(
             "contacts.html",
