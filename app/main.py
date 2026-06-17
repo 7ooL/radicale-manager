@@ -167,7 +167,7 @@ def login():
             app.logger.debug("Login discovery found %d books", len(books))
             if not books:
                 app.logger.warning("Login discovery succeeded but no books were found")
-                    app.logger.debug(
+                app.logger.debug(
                     "Login discovery details: server=%s username=%s selected_profile=%s no_books=True",
                     form["server_url"],
                     form["username"],
