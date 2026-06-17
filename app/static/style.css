@@ -308,6 +308,17 @@ textarea {
   border-radius: 14px;
 }
 
+.failure-list,
+.imported-list {
+  padding-left: 1.25rem;
+}
+
+.failure-list li,
+.imported-list li {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
 .alerts {
   margin-bottom: 1rem;
 }

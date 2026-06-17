@@ -2,16 +2,29 @@
 {% block content %}
   <div class="card form-card">
     <h1>Import VCF</h1>
+    <p class="muted">Choose an address book and upload a .vcf file. Each vCard in the file will be created or updated on the selected Radicale address book.</p>
     <form method="POST" enctype="multipart/form-data">
-      <label>
-        Address book
-        <select name="collection_path" required>
-          <option value="">Select address book</option>
-          {% for book in books %}
-            <option value="{{ book.path }}" {% if selected_path == book.path %}selected{% endif %}>{{ book.display_name or book.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
+      {% if targets %}
+        <label>
+          Address book
+          <select name="target" required>
+            <option value="">Select address book</option>
+            {% for target in targets %}
+              <option value="{{ target.value }}" {% if selected_target == target.value %}selected{% endif %}>{{ target.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% else %}
+        <label>
+          Address book
+          <select name="collection_path" required>
+            <option value="">Select address book</option>
+            {% for book in books %}
+              <option value="{{ book.path }}" {% if selected_path == book.path %}selected{% endif %}>{{ book.display_name or book.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
 
       <label>
         VCF file
@@ -19,7 +32,7 @@
       </label>
 
       <div class="button-row">
-        <button type="submit">Import</button>
+        <button class="button" type="submit">Import Contacts</button>
       </div>
     </form>
 
@@ -35,7 +48,15 @@
         {% if results.failed %}
           <ul class="failure-list">
             {% for fail in results.failed %}
-              <li>{{ fail.error }}</li>
+              <li>{% if fail.filename %}{{ fail.filename }}: {% endif %}{{ fail.error }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        {% if results.imported %}
+          <h3>Imported contacts</h3>
+          <ul class="imported-list">
+            {% for contact in results.imported %}
+              <li>{{ contact.name }} <span class="muted">({{ contact.status }})</span></li>
             {% endfor %}
           </ul>
         {% endif %}

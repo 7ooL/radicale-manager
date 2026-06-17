@@ -66,6 +66,7 @@ START_TIME = datetime.now(timezone.utc)
 # Navigation registry: central place to declare visible pages
 NAV_ITEMS = [
     {"name": "Dashboard", "endpoint": "dashboard", "icon": "🏠", "group": "General", "quick": True},
+    {"name": "Import", "endpoint": "import_vcf", "icon": "⬆️", "group": "General", "quick": False},
     {"name": "Connections", "endpoint": "connections", "icon": "🔗", "group": "Administration", "quick": False},
     {"name": "New Connection", "endpoint": "new_connection", "icon": "➕", "group": "Administration", "quick": False},
     {"name": "Routes Explorer", "endpoint": "system_routes", "icon": "🧭", "group": "System", "quick": False},
@@ -291,6 +292,70 @@ def fill_missing_contact_counts(profile_id, client, books):
                 )
         updated_books.append(normalized)
     return updated_books
+
+
+def build_import_targets():
+    targets = []
+    for profile in credential_store.get_enabled_profiles():
+        books = credential_store.get_cached_address_books(profile["id"]) or []
+        for book in books:
+            normalized = normalize_book_for_template(book)
+            targets.append(
+                {
+                    "profile_id": profile["id"],
+                    "profile_name": profile["name"],
+                    "path": normalized["path"],
+                    "display_name": normalized["display_name"],
+                    "value": f"{profile['id']}::{normalized['path']}",
+                    "label": f"{profile['name']} / {normalized['display_name']}",
+                }
+            )
+    return targets
+
+
+def import_vcf_into_book(profile_id, collection_path, file_storage):
+    if not file_storage:
+        raise ValueError("Please choose a VCF file to import.")
+
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        raise ValueError("Profile not found.")
+    if not profile.get("password"):
+        raise ValueError("Selected profile has no stored password.")
+
+    content = file_storage.read().decode("utf-8", errors="replace")
+    contacts, failed = parse_vcf_contacts(content)
+    client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
+
+    created = updated = 0
+    imported = []
+    for contact in contacts:
+        try:
+            response = client.put_contact(collection_path, contact["filename"], contact["vcard"])
+            if response.status_code == 201:
+                created += 1
+                status = "created"
+            else:
+                updated += 1
+                status = "updated"
+            imported.append(
+                {
+                    "name": contact.get("display_name") or contact["filename"],
+                    "filename": contact["filename"],
+                    "status": status,
+                }
+            )
+        except Exception as exc:
+            failed.append({"error": str(exc), "filename": contact.get("filename")})
+
+    update_cached_contact_count(profile_id, collection_path, None)
+    return {
+        "processed": len(contacts),
+        "created": created,
+        "updated": updated,
+        "failed": failed,
+        "imported": imported,
+    }
 
 
 def make_client():
@@ -720,72 +785,35 @@ def debug_profiles():
 
 @app.route("/import", methods=["GET", "POST"])
 def import_vcf():
-    """LEGACY: Import contacts from an uploaded VCF using session-based connection.
-    
-    DEPRECATED: Use profile_import_vcf() instead, which uses saved profiles.
-    This route relies on session['active_connection'] and is maintained for backwards compatibility only.
-    """
+    """Import contacts from an uploaded VCF into a selected saved address book."""
     app.logger.debug("Import page requested via %s", request.method)
-    client = make_client()
-    if not client:
-        flash("Please connect first.", "error")
-        return redirect(url_for("login"))
-
-    books = client.discover_addressbooks()
-    selected_path = request.args.get("target", "")
+    targets = build_import_targets()
+    selected_target = request.form.get("target") or request.args.get("target", "")
     results = None
 
     if request.method == "POST":
-        selected_path = request.form.get("collection_path", "").strip()
+        selected_target = request.form.get("target", "").strip()
         file = request.files.get("vcf_file")
-        app.logger.debug("Import POST selected_path=%s file_present=%s", selected_path, bool(file))
-        if not selected_path or not file:
-            app.logger.warning("Import POST missing path or file")
-            flash("Please select an address book and upload a VCF file.", "error")
-            return render_template("import.html", title="Import VCF", books=books, selected_path=selected_path)
-
-        try:
-            raw_bytes = file.read()
-            app.logger.debug("Read upload file size=%d", len(raw_bytes))
-            content = raw_bytes.decode("utf-8", errors="replace")
-            contacts, failed = parse_vcf_contacts(content)
-            app.logger.debug("Parsed %d contacts with %d failed blocks", len(contacts), len(failed))
-            processed = 0
-            created = 0
-            updated = 0
-            for contact in contacts:
-                processed += 1
-                try:
-                    response = client.put_contact(selected_path, contact["filename"], contact["vcard"])
-                    if response.status_code == 201:
-                        created += 1
-                    else:
-                        updated += 1
-                except Exception as exc:
-                    app.logger.exception("Failed to upload contact %s", contact.get("filename"))
-                    failed.append({"error": f"Failed to upload {contact['filename']}: {exc}"})
-            results = {"processed": processed, "created": created, "updated": updated, "failed": failed}
-            app.logger.info(
-                "Import completed path=%s processed=%d created=%d updated=%d failed=%d",
-                selected_path,
-                processed,
-                created,
-                updated,
-                len(failed),
-            )
-            flash("Import completed.", "success")
-        except UnicodeDecodeError as exc:
-            app.logger.exception("VCF decode failed")
-            flash(f"Import failed: cannot decode uploaded file as UTF-8: {exc}", "error")
-        except Exception as exc:
-            app.logger.exception("Import failed during parsing or upload")
-            flash(f"Import failed: {exc}", "error")
+        app.logger.debug("Import POST target=%s file_present=%s", selected_target, bool(file))
+        if not selected_target:
+            flash("Please select an address book.", "error")
+        elif not file:
+            flash("Please choose a VCF file to import.", "error")
+        else:
+            try:
+                profile_id_text, collection_path = selected_target.split("::", 1)
+                profile_id = int(profile_id_text)
+                results = import_vcf_into_book(profile_id, collection_path, file)
+                flash("Import completed.", "success")
+            except Exception as exc:
+                app.logger.exception("Import failed")
+                flash(f"Import failed: {exc}", "error")
 
     return render_template(
         "import.html",
         title="Import VCF",
-        books=books,
-        selected_path=selected_path,
+        targets=targets,
+        selected_target=selected_target,
         results=results,
     )
 
@@ -996,37 +1024,31 @@ def profile_delete_contact(profile_id, collection_path, contact_filename):
 def profile_import_vcf(profile_id, collection_path):
     app.logger.debug("Profile import %s %s %s", profile_id, collection_path, request.method)
     try:
-        client = get_client_for_profile(profile_id)
+        get_client_for_profile(profile_id)
     except Exception as exc:
         app.logger.exception("Failed to build client for profile %s", profile_id)
         flash(f"Unable to access profile: {exc}", "error")
         return redirect(url_for("connections"))
     results = None
+    books = [
+        normalize_book_for_template(book)
+        for book in (credential_store.get_cached_address_books(profile_id) or [])
+    ]
     if request.method == "POST":
-        file = request.files.get("vcf_file")
-        if not file:
-            flash("Please upload a VCF file.", "error")
-            return render_template("import.html", title="Import VCF", books=[], selected_path=collection_path)
+        selected_path = request.form.get("collection_path") or collection_path
         try:
-            content = file.read().decode("utf-8", errors="replace")
-            contacts, failed = parse_vcf_contacts(content)
-            processed = created = updated = 0
-            for contact in contacts:
-                try:
-                    response = client.put_contact(collection_path, contact["filename"], contact["vcard"])
-                    if response.status_code == 201:
-                        created += 1
-                    else:
-                        updated += 1
-                    processed += 1
-                except Exception as exc:
-                    failed.append({"error": str(exc), "filename": contact.get("filename")})
-            results = {"processed": processed, "created": created, "updated": updated, "failed": failed}
+            results = import_vcf_into_book(profile_id, selected_path, request.files.get("vcf_file"))
             flash("Import completed.", "success")
         except Exception as exc:
             app.logger.exception("Import failed for profile %s", profile_id)
             flash(f"Import failed: {exc}", "error")
-    return render_template("import.html", title="Import VCF", books=credential_store.get_cached_address_books(profile_id), selected_path=collection_path, results=results)
+    return render_template(
+        "import.html",
+        title="Import VCF",
+        books=books,
+        selected_path=collection_path,
+        results=results,
+    )
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/copy", methods=["POST"])
