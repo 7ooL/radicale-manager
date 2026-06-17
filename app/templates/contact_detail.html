@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <div class="detail-header">
+      <div>
+        <h1>{{ contact.summary.full_name or contact.filename }}</h1>
+        <p class="muted">{{ book.name }} / {{ contact.filename }}</p>
+      </div>
+      <div class="detail-actions">
+        <a class="button small" href="{{ url_for('edit_contact', collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
+        <a class="button small secondary" href="{{ url_for('view_contacts', collection_path=book.path) }}">Back to list</a>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <a class="tab active" href="#summary">Summary</a>
+      <a class="tab" href="#advanced">Advanced</a>
+      <a class="tab" href="#raw">Raw</a>
+    </div>
+
+    <section id="summary" class="detail-section">
+      <div class="grid-list summary-grid">
+        <div class="summary-card">
+          <h2>Primary details</h2>
+          <div class="field-row"><span class="field-label">Full Name</span><span>{{ contact.summary.full_name }}</span></div>
+          <div class="field-row"><span class="field-label">Nickname</span><span>{{ contact.summary.nickname }}</span></div>
+          <div class="field-row"><span class="field-label">Organization</span><span>{{ contact.summary.organization }}</span></div>
+          <div class="field-row"><span class="field-label">Job Title</span><span>{{ contact.summary.job_title }}</span></div>
+          <div class="field-row"><span class="field-label">Birthday</span><span>{{ contact.summary.birthday }}</span></div>
+        </div>
+
+        <div class="summary-card">
+          <h2>Photo</h2>
+          {% if contact.summary.photo.preview_url %}
+            <img class="avatar-preview" src="{{ contact.summary.photo.preview_url }}" alt="Contact photo" />
+          {% elif contact.summary.photo.metadata %}
+            <pre class="code-block">{{ contact.summary.photo.metadata | tojson(indent=2) }}</pre>
+          {% else %}
+            <p>No photo available.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card full-width">
+          <h2>Phone Numbers</h2>
+          {% if contact.summary.phones %}
+            <ul>
+              {% for phone in contact.summary.phones %}
+                <li>{{ phone }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>No phone numbers found.</p>
+          {% endif %}
+        </div>
+
+        <div class="summary-card full-width">
+          <h2>Email Addresses</h2>
+          {% if contact.summary.emails %}
+            <ul>
+              {% for email in contact.summary.emails %}
+                <li><a href="mailto:{{ email }}">{{ email }}</a></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>No email addresses found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card full-width">
+          <h2>Postal Addresses</h2>
+          {% if contact.summary.addresses %}
+            {% for address in contact.summary.addresses %}
+              <div class="address-block">
+                <div class="field-row"><span class="field-label">Type</span><span>{{ address.label }}</span></div>
+                <div class="field-row"><span class="field-label">Formatted</span><span>{{ address.formatted }}</span></div>
+                {% if address.components %}
+                  {% for key, value in address.components.items() %}
+                    {% if value %}
+                      <div class="field-row"><span class="field-label">{{ key | replace('_', ' ') | title }}</span><span>{{ value }}</span></div>
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              </div>
+            {% endfor %}
+          {% else %}
+            <p>No postal addresses found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card full-width">
+          <h2>Websites</h2>
+          {% if contact.summary.urls %}
+            <ul>
+              {% for url in contact.summary.urls %}
+                <li><a href="{{ url }}" target="_blank" rel="noreferrer">{{ url }}</a></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>No URLs found.</p>
+          {% endif %}
+        </div>
+
+        <div class="summary-card full-width">
+          <h2>Notes</h2>
+          {% if contact.summary.notes %}
+            {% for note in contact.summary.notes %}
+              <p>{{ note }}</p>
+            {% endfor %}
+          {% else %}
+            <p>No notes found.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="summary-card full-width">
+        <h2>Categories</h2>
+        {% if contact.summary.categories %}
+          <p>{{ contact.summary.categories | join(', ') }}</p>
+        {% else %}
+          <p>No categories found.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section id="advanced" class="detail-section hidden">
+      <div class="summary-card full-width">
+        <h2>Advanced vCard Fields</h2>
+        {% if contact.advanced_fields %}
+          <div class="property-list">
+            {% for field in contact.advanced_fields %}
+              <div class="property-item">
+                <div class="field-row"><span class="field-label">Property</span><span>{{ field.property }}</span></div>
+                {% if field.params %}
+                  <div class="field-row"><span class="field-label">Parameters</span><span>{{ field.params }}</span></div>
+                {% endif %}
+                <div class="field-row"><span class="field-label">Value</span><span>{{ field.display_value }}</span></div>
+                {% if field.property == 'ADR' and field.components %}
+                  <div class="address-block">
+                    {% for key, value in field.components.items() %}
+                      {% if value %}
+                        <div class="field-row"><span class="field-label">{{ key | replace('_', ' ') | title }}</span><span>{{ value }}</span></div>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>No parsed fields available.</p>
+        {% endif %}
+      </div>
+
+      <div class="summary-card full-width">
+        <h2>Additional Fields</h2>
+        {% if contact.additional_fields %}
+          <div class="property-list">
+            {% for field in contact.additional_fields %}
+              <div class="property-item">
+                <div class="field-row"><span class="field-label">Property</span><span>{{ field.property }}</span></div>
+                {% if field.params %}
+                  <div class="field-row"><span class="field-label">Parameters</span><span>{{ field.params }}</span></div>
+                {% endif %}
+                <div class="field-row"><span class="field-label">Value</span><span>{{ field.display_value }}</span></div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>No additional fields discovered.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section id="raw" class="detail-section hidden">
+      <h2>Raw vCard</h2>
+      <textarea readonly class="raw-view">{{ contact.raw }}</textarea>
+    </section>
+  </div>
+
+  <script>
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', event => {
+        event.preventDefault();
+        const targetId = tab.getAttribute('href').substring(1);
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+        document.querySelectorAll('.detail-section').forEach(section => section.classList.toggle('hidden', section.id !== targetId));
+      });
+    });
+  </script>
+{% endblock %}

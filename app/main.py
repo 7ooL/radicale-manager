@@ -13,7 +13,13 @@ from flask import (
     url_for,
 )
 from radicale_client import RadicaleClient
-from contact_utils import parse_vcf_contacts, vcard_to_dict, build_vcard_from_fields, get_contact_filename
+from contact_utils import (
+    parse_vcf_contacts,
+    parse_vcard_contact,
+    vcard_to_dict,
+    build_vcard_from_fields,
+    get_contact_filename,
+)
 from credential_store import CredentialStore
 
 
@@ -327,10 +333,43 @@ def view_contacts(collection_path):
             book=book,
             contacts=contacts,
         )
+
+
+@app.route("/books/<path:collection_path>/contacts/<contact_filename>")
+def view_contact(collection_path, contact_filename):
+    """Show detail information for a single contact."""
+    app.logger.debug("View contact requested: %s/%s", collection_path, contact_filename)
+    client = make_client()
+    if not client:
+        app.logger.warning("View contact denied: no active client")
+        flash("Please connect first.", "error")
+        return redirect(url_for("login"))
+
+    try:
+        books = client.discover_addressbooks()
+        book = next((b for b in books if b["path"] == collection_path), None)
+        if not book:
+            app.logger.warning("Address book not found: %s", collection_path)
+            flash("Address book not found.", "error")
+            return redirect(url_for("dashboard"))
+
+        contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
+        vcard_text, etag = client.get_contact(contact_href)
+        contact = parse_vcard_contact(vcard_text)
+        contact["filename"] = contact_filename
+        contact["etag"] = etag
+        contact["href"] = contact_href
+
+        return render_template(
+            "contact_detail.html",
+            title=f"Contact - {contact_filename}",
+            book=book,
+            contact=contact,
+        )
     except Exception as exc:
-        app.logger.exception("Unable to load contacts for %s", collection_path)
-        flash(f"Unable to load contacts: {exc}", "error")
-        return redirect(url_for("dashboard"))
+        app.logger.exception("Unable to load contact %s", contact_href)
+        flash(f"Unable to load contact: {exc}", "error")
+        return redirect(url_for("view_contacts", collection_path=collection_path))
 
 
 @app.route("/books/<path:collection_path>/export")

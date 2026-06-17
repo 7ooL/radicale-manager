@@ -147,6 +147,105 @@ textarea {
   background: #f8fafc;
 }
 
+.detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.5rem 0 1rem;
+  flex-wrap: wrap;
+}
+
+.tab {
+  display: inline-flex;
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #111827;
+  text-decoration: none;
+}
+
+.tab.active {
+  background: #2563eb;
+  color: white;
+}
+
+.detail-section.hidden {
+  display: none;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.summary-card {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 16px;
+}
+
+.summary-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.field-row:last-child {
+  border-bottom: none;
+}
+
+.field-label {
+  min-width: 10rem;
+  font-weight: 700;
+  color: #374151;
+}
+
+.address-block,
+.property-item {
+  margin: 0.75rem 0;
+  padding: 0.85rem;
+  border-radius: 14px;
+  background: white;
+}
+
+.raw-view {
+  width: 100%;
+  min-height: 320px;
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  border-radius: 16px;
+  border: 1px solid #d1d5db;
+  background: #f8fafc;
+  resize: vertical;
+}
+
+.code-block {
+  padding: 1rem;
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 14px;
+  overflow-x: auto;
+}
+
 .result-block {
   margin-top: 1.5rem;
   padding: 1rem;

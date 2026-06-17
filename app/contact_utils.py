@@ -1,3 +1,4 @@
+import base64
 import logging
 import re
 import uuid
@@ -181,6 +182,239 @@ def _extract_name(card):
         return name_text, "", ""
 
     return "", "", ""
+
+
+def _normalize_property_parameters(params):
+    normalized = {}
+    if not params:
+        return normalized
+    for key, value in params.items():
+        if isinstance(value, (list, tuple)):
+            parts = []
+            for item in value:
+                if isinstance(item, (list, tuple)):
+                    parts.extend(str(part) for part in item)
+                else:
+                    parts.append(str(item))
+            normalized[key.upper()] = [part for part in parts if part]
+        else:
+            normalized[key.upper()] = [str(value)]
+    return normalized
+
+
+def _format_property_value(prop):
+    if prop is None:
+        return ""
+    value = getattr(prop, "value", prop)
+    if value is None:
+        return ""
+    if prop.name.upper() == "ADR":
+        return _format_address_summary(_address_components(value))
+    if prop.name.upper() == "N":
+        if hasattr(value, "given") or hasattr(value, "family"):
+            return " ".join(
+                part for part in [getattr(value, "given", ""), getattr(value, "family", "")]
+                if part
+            )
+        if isinstance(value, (list, tuple)):
+            return " ".join(str(part).strip() for part in value if part)
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(part).strip() for part in value if part)
+    return str(value).strip()
+
+
+def _address_components(value):
+    if value is None:
+        return {}
+    if hasattr(value, "street") or hasattr(value, "city") or hasattr(value, "region"):
+        return {
+            "po_box": getattr(value, "box", "") or "",
+            "extended": getattr(value, "extended", "") or "",
+            "street": getattr(value, "street", "") or "",
+            "city": getattr(value, "city", "") or "",
+            "region": getattr(value, "region", "") or "",
+            "postal_code": getattr(value, "code", "") or "",
+            "country": getattr(value, "country", "") or "",
+        }
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() if item is not None else "" for item in value]
+        while len(parts) < 7:
+            parts.append("")
+        return {
+            "po_box": parts[0],
+            "extended": parts[1],
+            "street": parts[2],
+            "city": parts[3],
+            "region": parts[4],
+            "postal_code": parts[5],
+            "country": parts[6],
+        }
+    return {"formatted": str(value).strip()}
+
+
+def _format_address_summary(address_components):
+    if not address_components:
+        return ""
+    if "formatted" in address_components and address_components["formatted"]:
+        return address_components["formatted"]
+    parts = []
+    if address_components.get("po_box"):
+        parts.append(f"PO Box {address_components['po_box']}")
+    if address_components.get("extended"):
+        parts.append(address_components["extended"])
+    if address_components.get("street"):
+        parts.append(address_components["street"])
+    city_region = ", ".join(
+        part for part in [address_components.get("city"), address_components.get("region")] if part
+    )
+    if city_region:
+        parts.append(city_region)
+    if address_components.get("postal_code"):
+        parts.append(address_components["postal_code"])
+    if address_components.get("country"):
+        parts.append(address_components["country"])
+    return ", ".join(parts)
+
+
+def _extract_addresses(card):
+    addresses = []
+    for adr_prop in _property_items(card, "adr"):
+        adr_value = getattr(adr_prop, "value", None)
+        components = _address_components(adr_value)
+        addresses.append(
+            {
+                "label": _format_property_label(adr_prop.params) or "Address",
+                "formatted": _format_address_summary(components),
+                "components": components,
+                "params": _normalize_property_parameters(adr_prop.params),
+            }
+        )
+    return addresses
+
+
+def _format_property_label(params):
+    params = _normalize_property_parameters(params)
+    if not params:
+        return ""
+    label_parts = []
+    for name, values in params.items():
+        label_parts.append(f"{name}={','.join(values)}")
+    return ", ".join(label_parts)
+
+
+def _extract_photo_summary(card):
+    photo_props = _property_items(card, "photo")
+    if not photo_props:
+        return {}
+    prop = photo_props[0]
+    value = getattr(prop, "value", None)
+    metadata = {}
+    preview_url = None
+    if isinstance(value, (bytes, bytearray)):
+        content_type = None
+        params = _normalize_property_parameters(prop.params)
+        if params.get("TYPE"):
+            type_value = params["TYPE"][0]
+            if "/" in type_value:
+                content_type = type_value
+        if not content_type and params.get("MEDIATYPE"):
+            content_type = params["MEDIATYPE"][0]
+        if not content_type:
+            content_type = "image/jpeg"
+        encoded = base64.b64encode(value).decode("ascii")
+        preview_url = f"data:{content_type};base64,{encoded}"
+        metadata = {"size": len(value), "media_type": content_type}
+    elif isinstance(value, str):
+        if value.startswith("http://") or value.startswith("https://") or value.startswith("data:"):
+            preview_url = value
+            metadata = {"source": "uri"}
+        else:
+            metadata = {"value_preview": value[:80]}
+    else:
+        metadata = {"type": type(value).__name__, "value_preview": str(value)[:80]}
+    return {"preview_url": preview_url, "metadata": metadata}
+
+
+def parse_vcard_contact(vcard_text):
+    summary = {
+        "full_name": "",
+        "nickname": "",
+        "organization": "",
+        "job_title": "",
+        "birthday": "",
+        "emails": [],
+        "phones": [],
+        "addresses": [],
+        "urls": [],
+        "notes": [],
+        "categories": [],
+        "photo": {},
+    }
+    advanced_fields = []
+    additional_fields = []
+    try:
+        card = vobject.readOne(vcard_text)
+    except Exception as exc:
+        LOGGER.warning("Unable to parse vCard for parse_vcard_contact: %s", exc)
+        return {"summary": summary, "advanced_fields": advanced_fields, "additional_fields": additional_fields, "raw": vcard_text}
+
+    summary["full_name"] = _extract_text(_get_property(card, "fn")) or _extract_name(card)[0]
+    summary["nickname"] = _extract_text(_get_property(card, "nickname"))
+    summary["organization"] = extract_organization(card)
+    summary["job_title"] = _extract_text(_get_property(card, "title"))
+    summary["birthday"] = _extract_text(_get_property(card, "bday"))
+    summary["emails"] = _extract_list(card, "email")
+    summary["phones"] = _extract_list(card, "tel")
+    summary["addresses"] = _extract_addresses(card)
+    summary["urls"] = _extract_list(card, "url")
+    summary["notes"] = _extract_list(card, "note")
+    summary["categories"] = _extract_list(card, "categories")
+    summary["photo"] = _extract_photo_summary(card)
+
+    known_properties = {
+        "FN",
+        "N",
+        "NICKNAME",
+        "EMAIL",
+        "TEL",
+        "ADR",
+        "ORG",
+        "TITLE",
+        "URL",
+        "BDAY",
+        "NOTE",
+        "CATEGORIES",
+        "UID",
+        "PHOTO",
+        "IMPP",
+        "VERSION",
+    }
+
+    for child in getattr(card, "getChildren", lambda: [])():
+        prop_name = child.name.upper()
+        params = _normalize_property_parameters(getattr(child, "params", {}))
+        display_value = _format_property_value(child)
+        field_entry = {
+            "property": prop_name,
+            "params": params,
+            "display_value": display_value,
+            "raw_value": getattr(child, "value", None),
+        }
+        if prop_name == "ADR":
+            field_entry["components"] = _address_components(getattr(child, "value", None))
+        if prop_name == "PHOTO":
+            field_entry["photo_preview"] = summary["photo"].get("preview_url")
+            field_entry["photo_metadata"] = summary["photo"].get("metadata")
+        advanced_fields.append(field_entry)
+        if prop_name not in known_properties or prop_name.startswith("X-"):
+            additional_fields.append(field_entry)
+
+    return {
+        "summary": summary,
+        "advanced_fields": advanced_fields,
+        "additional_fields": additional_fields,
+        "raw": vcard_text,
+    }
 
 
 def vcard_to_dict(vcard_text):

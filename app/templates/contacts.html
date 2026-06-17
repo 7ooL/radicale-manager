@@ -17,11 +17,12 @@
         <tbody>
           {% for contact in contacts %}
             <tr>
-              <td>{{ contact.full_name }}</td>
+              <td><a href="{{ url_for('view_contact', collection_path=book.path, contact_filename=contact.filename) }}">{{ contact.full_name }}</a></td>
               <td>{{ contact.organization }}</td>
               <td>{{ contact.emails|join(', ') }}</td>
               <td>{{ contact.phones|join(', ') }}</td>
               <td>
+                <a class="button small" href="{{ url_for('view_contact', collection_path=book.path, contact_filename=contact.filename) }}">View</a>
                 <a class="button small" href="{{ url_for('edit_contact', collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
                 <a class="button small" href="{{ url_for('delete_contact', collection_path=book.path, contact_filename=contact.filename) }}">Delete</a>
               </td>
