@@ -149,6 +149,7 @@ def get_active_mobile_tab(endpoint):
         return "dashboard"
     if endpoint in (
         "global_contacts",
+        "global_contact_quality",
         "profile_view_contacts",
         "profile_view_contact",
         "profile_contact_transfer",
@@ -218,6 +219,10 @@ def build_breadcrumbs(endpoint, view_args):
     if endpoint == "system_events":
         crumbs.append({"name": "Settings", "url": url_for("system_menu")})
         crumbs.append({"name": "Event Log", "url": None})
+        return crumbs
+    if endpoint == "global_contact_quality":
+        crumbs.append({"name": "All Contacts", "url": url_for("global_contacts")})
+        crumbs.append({"name": "Global Quality Scan", "url": None})
         return crumbs
     if profile_id and collection_path:
         try:
@@ -500,6 +505,9 @@ def build_duplicate_report(contacts):
             "filename": contact.get("filename"),
             "email": ", ".join(contact.get("emails") or []),
             "phone": ", ".join(contact.get("phones") or []),
+            "profile_name": contact.get("profile_name"),
+            "book_name": contact.get("book_name"),
+            "book_path": contact.get("book_path"),
         }
         for email in contact.get("emails") or []:
             key = normalize_duplicate_key(email)
@@ -1613,6 +1621,119 @@ def global_contacts():
             "has_email": has_email,
             "has_phone": has_phone,
             "recent_days": recent_days_int,
+        },
+    )
+
+
+@app.route("/contacts/quality")
+def global_contact_quality():
+    """Scan contact quality across all enabled connections with optional scope filters."""
+    selected_profile_ids_raw = [value.strip() for value in request.args.getlist("profile_ids") if value.strip()]
+    selected_book_keys = [value.strip() for value in request.args.getlist("book_keys") if value.strip()]
+    selected_profile_ids = set()
+    for value in selected_profile_ids_raw:
+        try:
+            selected_profile_ids.add(int(value))
+        except Exception:
+            continue
+    selected_book_keys_set = set(selected_book_keys)
+
+    contacts = []
+    errors = []
+    profiles = credential_store.get_enabled_profiles()
+    profile_books = []
+    scanned_books = []
+    scanned_profile_ids = set()
+    scoped_book_count = 0
+
+    for profile in profiles:
+        books = credential_store.get_cached_address_books(profile["id"]) or []
+        for book in books:
+            normalized_book = normalize_book_for_template(book)
+            scoped_path = normalized_book["path"].strip("/")
+            book_key = f"{profile['id']}::{scoped_path}"
+            profile_books.append(
+                {
+                    "profile_id": profile["id"],
+                    "profile_name": profile["name"],
+                    "path": scoped_path,
+                    "display_name": normalized_book["display_name"],
+                    "key": book_key,
+                }
+            )
+
+    for profile in profiles:
+        if selected_profile_ids and profile["id"] not in selected_profile_ids:
+            continue
+        full_profile = credential_store.get_profile(profile["id"]) or {}
+        password = full_profile.get("password")
+        books = credential_store.get_cached_address_books(profile["id"]) or []
+        if not password:
+            errors.append(f"{profile['name']}: no stored password")
+            continue
+        try:
+            client = RadicaleClient(profile["server_url"], profile["username"], password)
+        except Exception as exc:
+            errors.append(f"{profile['name']}: {exc}")
+            continue
+
+        for book in books:
+            normalized_book = normalize_book_for_template(book)
+            normalized_path = normalized_book["path"].strip("/")
+            book_key = f"{profile['id']}::{normalized_path}"
+            if selected_book_keys_set and book_key not in selected_book_keys_set:
+                continue
+            scoped_book_count += 1
+            scanned_profile_ids.add(profile["id"])
+            scanned_books.append({"profile_name": profile["name"], "book_name": normalized_book["display_name"], "book_path": normalized_path})
+            try:
+                listed = client.list_contacts(normalized_book["path"])
+                update_cached_contact_count(profile["id"], normalized_book["path"], len(listed))
+            except Exception as exc:
+                errors.append(f"{profile['name']} / {normalized_book['display_name']}: {exc}")
+                continue
+
+            for item in listed:
+                try:
+                    parsed = vcard_to_dict(item["vcard"])
+                    filename = get_contact_filename(item["href"])
+                    parsed.update(
+                        {
+                            "filename": filename,
+                            "profile_id": profile["id"],
+                            "profile_name": profile["name"],
+                            "book_path": normalized_path,
+                            "book_name": normalized_book["display_name"],
+                        }
+                    )
+                    contacts.append(parsed)
+                except Exception as exc:
+                    errors.append(f"{profile['name']} / {normalized_book['display_name']}: skipped invalid contact ({exc})")
+
+    report = build_duplicate_report(contacts)
+    log_event(
+        "quality_scan",
+        details={
+            "scope": "global",
+            "profiles_scanned": len(scanned_profile_ids),
+            "books_scanned": scoped_book_count,
+            "contacts_scanned": len(contacts),
+            "duplicate_groups": len(report.get("duplicates") or []),
+            "issues": len(report.get("issues") or []),
+        },
+    )
+    return render_template(
+        "global_contact_quality.html",
+        title="Global Quality Scan",
+        contacts=contacts,
+        report=report,
+        errors=errors,
+        profiles=profiles,
+        profile_books=profile_books,
+        scanned_books=scanned_books,
+        scope_filters={
+            "profile_ids": [str(profile_id) for profile_id in sorted(selected_profile_ids)],
+            "book_keys": list(selected_book_keys_set),
         },
     )
 

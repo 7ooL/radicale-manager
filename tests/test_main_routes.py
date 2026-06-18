@@ -332,6 +332,33 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Second Contact", response.data)
         self.assertNotIn(b"Demo Contact", response.data)
 
+    def test_global_quality_scan_page_shows_duplicate_and_issue_summary(self):
+        response = self.client.get("/contacts/quality")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Global Quality Scan", response.data)
+        self.assertIn(b"Possible Duplicates", response.data)
+        self.assertIn(b"Missing Fields", response.data)
+        self.assertIn(b"Demo / Source", response.data)
+
+    def test_global_quality_scan_respects_profile_scope_filter(self):
+        FakeRadicaleClient.contacts["family/shared/contact-3.vcf"] = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-3\n"
+            "FN:Family Contact\n"
+            "N:Contact;Family;;;\n"
+            "END:VCARD\n"
+        )
+
+        scoped = self.client.get(f"/contacts/quality?profile_ids={self.profile_id}")
+        all_scopes = self.client.get("/contacts/quality")
+
+        self.assertEqual(scoped.status_code, 200)
+        self.assertEqual(all_scopes.status_code, 200)
+        self.assertIn(b"2 contacts scanned across selected connections and books.", scoped.data)
+        self.assertIn(b"3 contacts scanned across selected connections and books.", all_scopes.data)
+
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(
             f"/profiles/{self.profile_id}/books/demo/source/contacts/contact-1.vcf/transfer?action=move"

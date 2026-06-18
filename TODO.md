@@ -106,8 +106,8 @@ Goal: become a contact quality and migration platform.
 ### Contact Quality Engine
 
 - [x] Add analysis service that can scan cached or live contacts
-- [ ] Global quality scan from All Contacts view
-- [ ] Scope quality scan by selected connections and address books
+- [x] Global quality scan from All Contacts view
+- [x] Scope quality scan by selected connections and address books
 - [ ] Generate health score
 - [x] Detect missing name
 - [x] Detect missing email

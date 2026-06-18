@@ -3,6 +3,9 @@
   <div class="card">
     <h1>All Contacts</h1>
     <p class="muted">{{ contacts|length }} contacts across enabled connections and cached address books.</p>
+    <div class="button-row">
+      <a class="button secondary" href="{{ url_for('global_contact_quality') }}">Global Quality Scan</a>
+    </div>
     {% set filters_active = search_filters.q or search_filters.profile_id or search_filters.book_path or search_filters.has_email or search_filters.has_phone or search_filters.recent_days %}
     <details class="contact-search search-collapse" {% if filters_active %}open{% endif %}>
       <summary>Search Scope</summary>

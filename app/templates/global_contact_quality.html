@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <div class="detail-header">
+      <div>
+        <h1>Global Quality Scan</h1>
+        <p class="muted">{{ contacts|length }} contacts scanned across selected connections and books.</p>
+      </div>
+      <div class="detail-actions">
+        <a class="button small secondary" href="{{ url_for('global_contacts') }}">Back to all contacts</a>
+      </div>
+    </div>
+
+    <details class="contact-search search-collapse" {% if scope_filters.profile_ids or scope_filters.book_keys %}open{% endif %}>
+      <summary>Scan Scope</summary>
+      <form method="get" action="{{ url_for('global_contact_quality') }}" class="global-search-panel">
+        <label class="search-field">
+          <span>Connections</span>
+          <select name="profile_ids" multiple size="4">
+            {% for profile in profiles %}
+              <option value="{{ profile.id }}" {% if profile.id|string in scope_filters.profile_ids %}selected{% endif %}>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="search-field search-field-wide">
+          <span>Address Books</span>
+          <select name="book_keys" multiple size="6">
+            {% for pb in profile_books %}
+              <option value="{{ pb.key }}" {% if pb.key in scope_filters.book_keys %}selected{% endif %}>{{ pb.profile_name }} / {{ pb.display_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="panel-heading">Scope Actions</div>
+        <div class="search-actions">
+          <button class="button small" type="submit">Run Scan</button>
+          <a class="button small secondary" href="{{ url_for('global_contact_quality') }}">Reset Scope</a>
+        </div>
+      </form>
+    </details>
+
+    {% if errors %}
+      <div class="result-block">
+        <h2>Load warnings</h2>
+        <ul class="failure-list">
+          {% for error in errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="summary-grid quality-summary">
+      <div class="summary-card">
+        <h2>Possible Duplicates</h2>
+        <p>{{ report.duplicates|length }}</p>
+      </div>
+      <div class="summary-card">
+        <h2>Contacts With Missing Fields</h2>
+        <p>{{ report.issues|length }}</p>
+      </div>
+      <div class="summary-card">
+        <h2>Books Scanned</h2>
+        <p>{{ scanned_books|length }}</p>
+      </div>
+    </div>
+
+    <section class="summary-card full-width">
+      <h2>Possible Duplicates</h2>
+      {% if report.duplicates %}
+        <div class="quality-list">
+          {% for group in report.duplicates %}
+            <article class="quality-item">
+              <h3>{{ group.type }} match: {{ group.value }}</h3>
+              <p class="muted">{{ group.count }} contacts</p>
+              <ul>
+                {% for contact in group.contacts %}
+                  <li>
+                    <strong>{{ contact.display }}</strong>
+                    {% if contact.profile_name or contact.book_name %}<span>{{ contact.profile_name }} / {{ contact.book_name }}</span>{% endif %}
+                    {% if contact.email %}<span>{{ contact.email }}</span>{% endif %}
+                    {% if contact.phone %}<span>{{ contact.phone }}</span>{% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No duplicate email, phone, or exact-name matches found in this scope.</p>
+      {% endif %}
+    </section>
+
+    <section class="summary-card full-width">
+      <h2>Missing Fields</h2>
+      {% if report.issues %}
+        <div class="quality-list">
+          {% for issue in report.issues %}
+            <article class="quality-item">
+              <h3>{{ issue.display }}</h3>
+              {% if issue.profile_name or issue.book_name %}<p class="muted">{{ issue.profile_name }} / {{ issue.book_name }}</p>{% endif %}
+              <p>Missing {{ issue.missing|join(', ') }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No missing name, email, or phone issues found in this scope.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}
