@@ -44,6 +44,38 @@ def configure_logging(app):
     app.logger.setLevel(logging.DEBUG)
 
 
+def humanize_timestamp(value):
+    """Return a short relative time string for ISO-ish timestamps."""
+    if not value:
+        return "never"
+    parsed = parse_iso_timestamp(value)
+    if not parsed:
+        return str(value)
+    now = datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    delta = now - parsed
+    seconds = int(delta.total_seconds())
+    if seconds < 0:
+        seconds = 0
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        minutes = seconds // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    if seconds < 86400:
+        hours = seconds // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    if seconds < 604800:
+        days = seconds // 86400
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    if seconds < 2592000:
+        weeks = seconds // 604800
+        return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+    months = seconds // 2592000
+    return f"{months} month{'s' if months != 1 else ''} ago"
+
+
 def create_app():
     load_dotenv(override=True)
     app = Flask(__name__)
@@ -68,6 +100,11 @@ credential_store = CredentialStore(app.config["PROFILE_STORE_PATH"], app.config[
 
 # record process start for uptime
 START_TIME = datetime.now(timezone.utc)
+
+
+@app.template_filter("relative_time")
+def relative_time_filter(value):
+    return humanize_timestamp(value)
 
 # Navigation registry: central place to declare visible pages
 NAV_ITEMS = [

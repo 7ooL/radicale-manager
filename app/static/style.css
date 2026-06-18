@@ -339,7 +339,7 @@ textarea {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .data-table th,

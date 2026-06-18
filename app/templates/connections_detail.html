@@ -14,7 +14,10 @@
 
     <div class="summary-card connection-meta-grid">
       <div class="meta-chip"><strong>User</strong><span>{{ profile.username }}</span></div>
-      <div class="meta-chip"><strong>Last Success</strong><span>{{ profile.last_successful_connect_at or 'never' }}</span></div>
+      <div class="meta-chip">
+        <strong>Last Success</strong>
+        <span title="{{ profile.last_successful_connect_at or 'never' }}">{{ profile.last_successful_connect_at|relative_time }}</span>
+      </div>
       <div class="meta-chip"><strong>Last Error</strong><span>{{ profile.last_error or 'none' }}</span></div>
     </div>
 
@@ -60,7 +63,7 @@
             <div class="managed-book-main">
               <strong>{{ b.display_name }}</strong>
               <span class="muted">Contacts: {{ b.contact_count if b.contact_count is not none else 'unknown' }}</span>
-              <span class="muted">Last modified: {{ b.last_seen_at or 'unknown' }}</span>
+              <span class="muted" title="{{ b.last_seen_at or 'unknown' }}">Last modified: {{ b.last_seen_at|relative_time if b.last_seen_at else 'unknown' }}</span>
             </div>
             <div class="button-row">
               <a class="button small" href="{{ url_for('profile_view_contacts', profile_id=profile.id, collection_path=b.path) }}">Open Contacts</a>
