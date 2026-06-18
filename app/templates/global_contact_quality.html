@@ -9,6 +9,11 @@
       <div class="detail-actions">
         <a class="button small secondary" href="{{ url_for('global_contacts') }}">Back to all contacts</a>
         <a class="button small secondary" href="{{ url_for('quality_review_queue') }}">Review Queue</a>
+        {% if scope_filters.show_ignored %}
+          <a class="button small secondary" href="{{ url_for('global_contact_quality', profile_ids=scope_filters.profile_ids, book_keys=scope_filters.book_keys) }}">Hide Ignored</a>
+        {% elif ignored_duplicate_count %}
+          <a class="button small secondary" href="{{ url_for('global_contact_quality', profile_ids=scope_filters.profile_ids, book_keys=scope_filters.book_keys, show_ignored=1) }}">Show Ignored ({{ ignored_duplicate_count }})</a>
+        {% endif %}
       </div>
     </div>
 
@@ -99,16 +104,19 @@
                 </div>
               {% endif %}
               <div class="duplicate-action-row">
-                <form method="post" action="{{ url_for('quality_duplicate_merge') }}" class="inline-action-form">
-                  <input type="hidden" name="next" value="{{ quality_return_to }}" />
-                  <input type="hidden" name="scope" value="global" />
-                  <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
-                  <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
-                  <input type="hidden" name="match_score" value="{{ group.match_score }}" />
-                  <input type="hidden" name="confidence" value="{{ group.confidence }}" />
-                  <input type="hidden" name="duplicate_contacts" value="{{ group.contacts|tojson }}" />
-                  <button class="button small" type="submit">Merge</button>
-                </form>
+                {% set recommend_state = group.queue_state_by_action.get('recommend_merge') if group.queue_state_by_action else None %}
+                {% if not recommend_state or recommend_state.status not in ['resolved', 'dismissed'] %}
+                  <form method="post" action="{{ url_for('quality_duplicate_merge') }}" class="inline-action-form">
+                    <input type="hidden" name="next" value="{{ quality_return_to }}" />
+                    <input type="hidden" name="scope" value="global" />
+                    <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
+                    <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
+                    <input type="hidden" name="match_score" value="{{ group.match_score }}" />
+                    <input type="hidden" name="confidence" value="{{ group.confidence }}" />
+                    <input type="hidden" name="duplicate_contacts" value="{{ group.contacts|tojson }}" />
+                    <button class="button small" type="submit">Merge</button>
+                  </form>
+                {% endif %}
                 <form method="post" action="{{ url_for('quality_duplicate_review_later') }}" class="inline-action-form">
                   <input type="hidden" name="next" value="{{ quality_return_to }}" />
                   <input type="hidden" name="scope" value="global" />
@@ -126,7 +134,8 @@
                   <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
                   <input type="hidden" name="match_score" value="{{ group.match_score }}" />
                   <input type="hidden" name="confidence" value="{{ group.confidence }}" />
-                  <button class="button small ghost-danger" type="submit">Ignore</button>
+                  <input type="hidden" name="ignored_current" value="{{ 1 if group.ignored else 0 }}" />
+                  <button class="button small ghost-danger" type="submit">{{ "Unignore" if group.ignored else "Ignore" }}</button>
                 </form>
               </div>
               <ul>

@@ -256,6 +256,17 @@ def build_breadcrumbs(endpoint, view_args):
         crumbs.append({"name": "Quality Review Queue", "url": None})
         return crumbs
     if endpoint == "quality_review_queue_merge_preview":
+        return_to = (request.args.get("return_to") or "").strip()
+        if return_to.startswith("/contacts/quality"):
+            crumbs.append({"name": "All Contacts", "url": url_for("global_contacts")})
+            crumbs.append({"name": "Global Quality Scan", "url": return_to})
+            crumbs.append({"name": "Merge Preview", "url": None})
+            return crumbs
+        if return_to.startswith("/profiles/") and "/contacts/quality" in return_to:
+            crumbs.append({"name": "Contacts", "url": url_for("global_contacts")})
+            crumbs.append({"name": "Book Quality Scan", "url": return_to})
+            crumbs.append({"name": "Merge Preview", "url": None})
+            return crumbs
         crumbs.append({"name": "Settings", "url": url_for("system_menu")})
         crumbs.append({"name": "Quality Review Queue", "url": url_for("quality_review_queue")})
         crumbs.append({"name": "Merge Preview", "url": None})
@@ -1366,13 +1377,34 @@ def quality_duplicate_review_later():
 @app.route("/quality/duplicate-merge", methods=["POST"])
 def quality_duplicate_merge():
     payload = parse_duplicate_group_form()
+    return_to = (request.form.get("next") or "").strip()
+    existing_states = attach_queue_stage_to_duplicate_groups(
+        [
+            {
+                "type": payload["duplicate_type"],
+                "value": payload["duplicate_value"],
+            }
+        ],
+        scope=payload["scope"],
+        profile_id=payload["profile_id"],
+        collection_path=payload["collection_path"],
+    )[0].get("queue_state_by_action", {})
+    recommend_state = existing_states.get("recommend_merge")
+    if recommend_state and recommend_state.get("status") in {"resolved", "dismissed"}:
+        flash("This duplicate is already closed. Re-open it from Review Queue if you want to merge again.", "error")
+        if payload["profile_id"] and payload["collection_path"]:
+            return redirect_back_or("profile_contact_quality", profile_id=payload["profile_id"], collection_path=payload["collection_path"])
+        return redirect_back_or("global_contact_quality")
     queue_key = queue_duplicate_action("recommend_merge", payload)
+    if return_to:
+        return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key, return_to=return_to))
     return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
 
 
 @app.route("/quality/duplicate-ignore", methods=["POST"])
 def quality_duplicate_ignore():
     payload = parse_duplicate_group_form()
+    ignored_current = (request.form.get("ignored_current") or "").strip() in ("1", "true", "on", "yes")
     ignore_key = quality_ignore_key_from_values(
         payload["scope"],
         payload["profile_id"],
@@ -1386,13 +1418,16 @@ def quality_duplicate_ignore():
         collection_path=payload["collection_path"] or None,
         details={
             "ignore_key": ignore_key,
-            "ignored": True,
+            "ignored": not ignored_current,
             "scope": payload["scope"],
             "duplicate_type": payload["duplicate_type"],
             "duplicate_value": payload["duplicate_value"],
         },
     )
-    flash("Duplicate group ignored. It will be hidden from scan results.", "success")
+    if ignored_current:
+        flash("Duplicate group restored to active results.", "success")
+    else:
+        flash("Duplicate group ignored. It will be hidden from scan results.", "success")
     if payload["profile_id"] and payload["collection_path"]:
         return redirect_back_or("profile_contact_quality", profile_id=payload["profile_id"], collection_path=payload["collection_path"])
     return redirect_back_or("global_contact_quality")
@@ -2814,6 +2849,7 @@ def global_contacts():
 @app.route("/contacts/quality")
 def global_contact_quality():
     """Scan contact quality across all enabled connections with optional scope filters."""
+    show_ignored = (request.args.get("show_ignored") or "").strip() in ("1", "true", "yes", "on")
     selected_profile_ids_raw = [value.strip() for value in request.args.getlist("profile_ids") if value.strip()]
     selected_book_keys = [value.strip() for value in request.args.getlist("book_keys") if value.strip()]
     selected_profile_ids = set()
@@ -2897,12 +2933,14 @@ def global_contact_quality():
                     errors.append(f"{profile['name']} / {normalized_book['display_name']}: skipped invalid contact ({exc})")
 
     report = build_duplicate_report(contacts)
-    visible_duplicates = apply_ignored_duplicate_groups(
+    all_duplicates = apply_ignored_duplicate_groups(
         report.get("duplicates") or [],
         scope="global",
     )
+    ignored_duplicate_count = sum(1 for group in (report.get("duplicates") or []) if group.get("ignored"))
+    duplicates_for_render = list(report.get("duplicates") or []) if show_ignored else all_duplicates
     report["duplicates"] = attach_queue_stage_to_duplicate_groups(
-        visible_duplicates,
+        duplicates_for_render,
         scope="global",
     )
     log_event(
@@ -2929,7 +2967,9 @@ def global_contact_quality():
         scope_filters={
             "profile_ids": [str(profile_id) for profile_id in sorted(selected_profile_ids)],
             "book_keys": list(selected_book_keys_set),
+            "show_ignored": show_ignored,
         },
+        ignored_duplicate_count=ignored_duplicate_count,
         quality_actions=QUALITY_DUPLICATE_ACTIONS,
         quality_return_to=request.full_path.rstrip("?"),
     )
@@ -3410,6 +3450,7 @@ def profile_bulk_contacts(profile_id, collection_path):
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/quality")
 def profile_contact_quality(profile_id, collection_path):
+    show_ignored = (request.args.get("show_ignored") or "").strip() in ("1", "true", "yes", "on")
     try:
         client = get_client_for_profile(profile_id)
     except Exception as exc:
@@ -3436,14 +3477,16 @@ def profile_contact_quality(profile_id, collection_path):
             except Exception as exc:
                 app.logger.warning("Skipping invalid contact during quality scan: %s", exc)
         report = build_duplicate_report(contacts)
-        visible_duplicates = apply_ignored_duplicate_groups(
+        all_duplicates = apply_ignored_duplicate_groups(
             report.get("duplicates") or [],
             scope="book",
             profile_id=profile_id,
             collection_path=book.get("path") or collection_path,
         )
+        ignored_duplicate_count = sum(1 for group in (report.get("duplicates") or []) if group.get("ignored"))
+        duplicates_for_render = list(report.get("duplicates") or []) if show_ignored else all_duplicates
         report["duplicates"] = attach_queue_stage_to_duplicate_groups(
-            visible_duplicates,
+            duplicates_for_render,
             scope="book",
             profile_id=profile_id,
             collection_path=book.get("path") or collection_path,
@@ -3467,6 +3510,8 @@ def profile_contact_quality(profile_id, collection_path):
             profile_id=profile_id,
             contacts=contacts,
             report=report,
+            ignored_duplicate_count=ignored_duplicate_count,
+            show_ignored=show_ignored,
             quality_actions=QUALITY_DUPLICATE_ACTIONS,
             quality_return_to=request.full_path.rstrip("?"),
         )
@@ -4232,4 +4277,3 @@ if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes", "on")
     extra_files = [".env"] if debug and os.path.exists(".env") else None
     app.run(host="0.0.0.0", port=port, debug=debug, extra_files=extra_files)
-

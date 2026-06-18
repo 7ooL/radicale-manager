@@ -486,6 +486,7 @@ class MainRoutesTest(unittest.TestCase):
         response = self.client.post(
             "/quality/duplicate-merge",
             data={
+                "next": "/contacts/quality",
                 "scope": "global",
                 "duplicate_type": "Email",
                 "duplicate_value": "demo@example.test",
@@ -516,6 +517,24 @@ class MainRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/quality/review-queue/merge-preview?queue_key=", response.location)
+        self.assertIn("return_to=/contacts/quality", response.location)
+
+    def test_quality_ignore_can_be_unignored_from_show_ignored_view(self):
+        self.client.post(
+            "/quality/duplicate-ignore",
+            data={
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "next": "/contacts/quality",
+            },
+        )
+
+        ignored_view = self.client.get("/contacts/quality?show_ignored=1")
+        self.assertEqual(ignored_view.status_code, 200)
+        self.assertIn(b"Unignore", ignored_view.data)
 
     def test_book_quality_scan_shows_merge_preview_link_for_queued_recommendation(self):
         queue_key = f"book|{self.profile_id}|demo/source|Email|demo@example.test|recommend_merge"
