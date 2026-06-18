@@ -153,16 +153,16 @@ QUALITY_DUPLICATE_ACTIONS = {
 }
 
 QUALITY_ACTION_STATUSES = {
-    "queued": "Queued",
+    "queued": "Ready",
     "in_review": "In Review",
-    "resolved": "Resolved",
+    "resolved": "Mitigated",
     "dismissed": "Dismissed",
 }
 
 QUALITY_STATUS_DESCRIPTIONS = {
-    "queued": "New recommendation waiting for triage.",
+    "queued": "Ready for triage and mitigation planning.",
     "in_review": "Actively being reviewed for a mitigation decision.",
-    "resolved": "Mitigated or completed; no further action needed.",
+    "resolved": "Mitigation applied or completed; no further action needed.",
     "dismissed": "Accepted risk / false positive; intentionally closed.",
 }
 
@@ -206,9 +206,11 @@ def get_active_mobile_tab(endpoint):
         "profile_backup_export",
         "system_events",
         "quality_review_queue",
+        "quality_review_queue_merge_preview",
+        "quality_review_queue_merge_apply",
     ):
         return "system_menu"
-    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings", "system_events", "quality_review_queue"):
+    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings", "system_events", "quality_review_queue", "quality_review_queue_merge_preview", "quality_review_queue_merge_apply"):
         return "system_menu"
     return "dashboard"
 
@@ -247,6 +249,11 @@ def build_breadcrumbs(endpoint, view_args):
     if endpoint == "quality_review_queue":
         crumbs.append({"name": "Settings", "url": url_for("system_menu")})
         crumbs.append({"name": "Quality Review Queue", "url": None})
+        return crumbs
+    if endpoint == "quality_review_queue_merge_preview":
+        crumbs.append({"name": "Settings", "url": url_for("system_menu")})
+        crumbs.append({"name": "Quality Review Queue", "url": url_for("quality_review_queue")})
+        crumbs.append({"name": "Merge Preview", "url": None})
         return crumbs
     if endpoint == "global_contact_quality":
         crumbs.append({"name": "All Contacts", "url": url_for("global_contacts")})
@@ -679,6 +686,7 @@ def build_duplicate_report(contacts):
         entry = {
             "display": display,
             "filename": contact.get("filename"),
+            "profile_id": contact.get("profile_id"),
             "email": ", ".join(contact.get("emails") or []),
             "phone": ", ".join(contact.get("phones") or []),
             "profile_name": contact.get("profile_name"),
@@ -831,6 +839,85 @@ def quality_queue_key_from_event(event):
     )
 
 
+def build_quality_queue_entries(limit=1000):
+    action_events = credential_store.get_recent_events(limit=limit, actions=["quality_action"])
+    status_events = credential_store.get_recent_events(limit=limit, actions=["quality_action_status"])
+    profiles = credential_store.get_profiles()
+    profile_names = {profile["id"]: profile["name"] for profile in profiles}
+
+    latest_status_by_key = {}
+    for event in status_events:
+        details = event.get("details") or {}
+        queue_key = details.get("queue_key")
+        if not queue_key or queue_key in latest_status_by_key:
+            continue
+        latest_status_by_key[queue_key] = {
+            "status": details.get("status") or "queued",
+            "updated_at": event.get("created_at"),
+        }
+
+    queue_entries = {}
+    for event in action_events:
+        details = event.get("details") or {}
+        queue_key = details.get("queue_key") or quality_queue_key_from_event(event)
+        if not queue_key or queue_key in queue_entries:
+            continue
+        status_info = latest_status_by_key.get(queue_key) or {}
+        profile_id = event.get("profile_id")
+        duplicate_contacts = details.get("duplicate_contacts") or []
+        if isinstance(duplicate_contacts, str):
+            try:
+                duplicate_contacts = json.loads(duplicate_contacts)
+            except Exception:
+                duplicate_contacts = []
+        if not isinstance(duplicate_contacts, list):
+            duplicate_contacts = []
+        normalized_contacts = []
+        for item in duplicate_contacts[:4]:
+            if isinstance(item, dict):
+                normalized_contacts.append(
+                    {
+                        "display": item.get("display") or "",
+                        "email": item.get("email") or "",
+                        "phone": item.get("phone") or "",
+                        "profile_name": item.get("profile_name") or "",
+                        "book_name": item.get("book_name") or "",
+                        "profile_id": item.get("profile_id"),
+                        "book_path": item.get("book_path") or "",
+                        "filename": item.get("filename") or "",
+                    }
+                )
+        merged_preview = {}
+        if normalized_contacts:
+            names = [item.get("display") for item in normalized_contacts if item.get("display")]
+            emails = sorted({part.strip() for item in normalized_contacts for part in (item.get("email") or "").split(",") if part.strip()})
+            phones = sorted({part.strip() for item in normalized_contacts for part in (item.get("phone") or "").split(",") if part.strip()})
+            merged_preview = {
+                "display": names[0] if names else "Merged contact",
+                "emails": emails,
+                "phones": phones,
+            }
+        queue_entries[queue_key] = {
+            "queue_key": queue_key,
+            "scope": details.get("scope") or "global",
+            "action": details.get("action") or "",
+            "action_label": QUALITY_DUPLICATE_ACTIONS.get(details.get("action"), details.get("label") or (details.get("action") or "").title()),
+            "duplicate_type": details.get("duplicate_type") or "",
+            "duplicate_value": details.get("duplicate_value") or "",
+            "match_score": details.get("match_score") or "",
+            "confidence": details.get("confidence") or "",
+            "profile_id": profile_id,
+            "profile_name": profile_names.get(profile_id) if profile_id else "All profiles",
+            "collection_path": event.get("collection_path") or details.get("collection_path") or "",
+            "created_at": event.get("created_at"),
+            "status": status_info.get("status") or details.get("status") or "queued",
+            "status_updated_at": status_info.get("updated_at") or event.get("created_at"),
+            "duplicate_contacts": normalized_contacts,
+            "merged_preview": merged_preview,
+        }
+    return queue_entries
+
+
 @app.route("/quality/duplicate-action", methods=["POST"])
 def quality_duplicate_action():
     action = (request.form.get("action") or "").strip()
@@ -858,6 +945,9 @@ def quality_duplicate_action():
                                 "phone": item.get("phone") or "",
                                 "profile_name": item.get("profile_name") or "",
                                 "book_name": item.get("book_name") or "",
+                                "profile_id": item.get("profile_id"),
+                                "book_path": item.get("book_path") or "",
+                                "filename": item.get("filename") or "",
                             }
                         )
         except Exception:
@@ -912,78 +1002,8 @@ def quality_review_queue():
     selected_action = (request.args.get("action") or "").strip()
     selected_profile_id = (request.args.get("profile_id") or "").strip()
 
-    action_events = credential_store.get_recent_events(limit=1000, actions=["quality_action"])
-    status_events = credential_store.get_recent_events(limit=1000, actions=["quality_action_status"])
+    queue_entries = build_quality_queue_entries(limit=1000)
     profiles = credential_store.get_profiles()
-    profile_names = {profile["id"]: profile["name"] for profile in profiles}
-
-    latest_status_by_key = {}
-    for event in status_events:
-        details = event.get("details") or {}
-        queue_key = details.get("queue_key")
-        if not queue_key or queue_key in latest_status_by_key:
-            continue
-        latest_status_by_key[queue_key] = {
-            "status": details.get("status") or "queued",
-            "updated_at": event.get("created_at"),
-        }
-
-    queue_entries = {}
-    for event in action_events:
-        details = event.get("details") or {}
-        queue_key = details.get("queue_key") or quality_queue_key_from_event(event)
-        if not queue_key or queue_key in queue_entries:
-            continue
-        status_info = latest_status_by_key.get(queue_key) or {}
-        profile_id = event.get("profile_id")
-        duplicate_contacts = details.get("duplicate_contacts") or []
-        if isinstance(duplicate_contacts, str):
-            try:
-                duplicate_contacts = json.loads(duplicate_contacts)
-            except Exception:
-                duplicate_contacts = []
-        if not isinstance(duplicate_contacts, list):
-            duplicate_contacts = []
-        normalized_contacts = []
-        for item in duplicate_contacts[:4]:
-            if isinstance(item, dict):
-                normalized_contacts.append(
-                    {
-                        "display": item.get("display") or "",
-                        "email": item.get("email") or "",
-                        "phone": item.get("phone") or "",
-                        "profile_name": item.get("profile_name") or "",
-                        "book_name": item.get("book_name") or "",
-                    }
-                )
-        merged_preview = {}
-        if normalized_contacts:
-            names = [item.get("display") for item in normalized_contacts if item.get("display")]
-            emails = sorted({part.strip() for item in normalized_contacts for part in (item.get("email") or "").split(",") if part.strip()})
-            phones = sorted({part.strip() for item in normalized_contacts for part in (item.get("phone") or "").split(",") if part.strip()})
-            merged_preview = {
-                "display": names[0] if names else "Merged contact",
-                "emails": emails,
-                "phones": phones,
-            }
-        queue_entries[queue_key] = {
-            "queue_key": queue_key,
-            "scope": details.get("scope") or "global",
-            "action": details.get("action") or "",
-            "action_label": QUALITY_DUPLICATE_ACTIONS.get(details.get("action"), details.get("label") or (details.get("action") or "").title()),
-            "duplicate_type": details.get("duplicate_type") or "",
-            "duplicate_value": details.get("duplicate_value") or "",
-            "match_score": details.get("match_score") or "",
-            "confidence": details.get("confidence") or "",
-            "profile_id": profile_id,
-            "profile_name": profile_names.get(profile_id) if profile_id else "All profiles",
-            "collection_path": event.get("collection_path") or details.get("collection_path") or "",
-            "created_at": event.get("created_at"),
-            "status": status_info.get("status") or details.get("status") or "queued",
-            "status_updated_at": status_info.get("updated_at") or event.get("created_at"),
-            "duplicate_contacts": normalized_contacts,
-            "merged_preview": merged_preview,
-        }
 
     filtered_entries = []
     for entry in queue_entries.values():
@@ -1021,6 +1041,174 @@ def quality_review_queue():
             "profile_id": selected_profile_id,
         },
     )
+
+
+@app.route("/quality/review-queue/merge-preview")
+def quality_review_queue_merge_preview():
+    queue_key = (request.args.get("queue_key") or "").strip()
+    if not queue_key:
+        flash("Missing queue item key.", "error")
+        return redirect(url_for("quality_review_queue"))
+    queue_entries = build_quality_queue_entries(limit=1000)
+    entry = queue_entries.get(queue_key)
+    if not entry:
+        flash("Queue item not found.", "error")
+        return redirect(url_for("quality_review_queue"))
+    if entry.get("action") != "recommend_merge":
+        flash("Merge preview is only available for merge recommendations.", "error")
+        return redirect(url_for("quality_review_queue"))
+
+    contacts = entry.get("duplicate_contacts") or []
+    actionable_contacts = [
+        item for item in contacts
+        if item.get("profile_id") and item.get("book_path") and item.get("filename")
+    ]
+    if len(actionable_contacts) < 2:
+        flash("This queue item does not have enough contact references to merge safely.", "error")
+        return redirect(url_for("quality_review_queue"))
+
+    source_details = []
+    parse_errors = []
+    for item in actionable_contacts[:2]:
+        try:
+            profile_id = int(item.get("profile_id"))
+            client = get_client_for_profile(profile_id)
+            vcard_text, _etag = client.get_contact(f"{item['book_path'].rstrip('/')}/{item['filename']}")
+            fields = vcard_to_dict(vcard_text)
+            source_details.append(
+                {
+                    "ref": item,
+                    "fields": fields,
+                    "raw_vcard": vcard_text,
+                }
+            )
+        except Exception as exc:
+            parse_errors.append(str(exc))
+    if len(source_details) < 2:
+        flash(f"Unable to load source contacts for preview: {'; '.join(parse_errors) or 'unknown error'}", "error")
+        return redirect(url_for("quality_review_queue"))
+
+    merged_defaults = {
+        "full_name": source_details[0]["fields"].get("full_name") or source_details[1]["fields"].get("full_name") or "",
+        "organization": source_details[0]["fields"].get("organization") or source_details[1]["fields"].get("organization") or "",
+        "job_title": source_details[0]["fields"].get("job_title") or source_details[1]["fields"].get("job_title") or "",
+        "note": source_details[0]["fields"].get("note") or source_details[1]["fields"].get("note") or "",
+        "emails": sorted(
+            {
+                email.strip()
+                for source in source_details
+                for email in (source["fields"].get("emails") or [])
+                if email and email.strip()
+            }
+        ),
+        "phones": sorted(
+            {
+                phone.strip()
+                for source in source_details
+                for phone in (source["fields"].get("phones") or [])
+                if phone and phone.strip()
+            }
+        ),
+    }
+    default_destination = f"{source_details[0]['ref']['profile_id']}::{source_details[0]['ref']['book_path']}"
+    destinations = build_contact_destinations()
+    return render_template(
+        "quality_merge_preview.html",
+        title="Merge Preview",
+        entry=entry,
+        source_details=source_details,
+        destinations=destinations,
+        merged_defaults=merged_defaults,
+        default_destination=default_destination,
+    )
+
+
+@app.route("/quality/review-queue/merge-apply", methods=["POST"])
+def quality_review_queue_merge_apply():
+    queue_key = (request.form.get("queue_key") or "").strip()
+    destination = (request.form.get("destination") or "").strip()
+    if not queue_key:
+        flash("Missing queue key.", "error")
+        return redirect(url_for("quality_review_queue"))
+    if not destination:
+        flash("Choose a destination address book for the merged contact.", "error")
+        return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
+    if request.form.get("confirm_merge") != "yes":
+        flash("Confirm the merge before applying mitigation.", "error")
+        return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
+
+    queue_entries = build_quality_queue_entries(limit=1000)
+    entry = queue_entries.get(queue_key)
+    if not entry or entry.get("action") != "recommend_merge":
+        flash("Merge queue item not found.", "error")
+        return redirect(url_for("quality_review_queue"))
+
+    source_refs = [
+        item for item in (entry.get("duplicate_contacts") or [])
+        if item.get("profile_id") and item.get("book_path") and item.get("filename")
+    ][:2]
+    if len(source_refs) < 2:
+        flash("Not enough source contacts to execute merge.", "error")
+        return redirect(url_for("quality_review_queue"))
+
+    try:
+        dest_profile_raw, dest_path = destination.split("::", 1)
+        dest_profile_id = int(dest_profile_raw)
+        dest_path = dest_path.strip("/")
+    except Exception:
+        flash("Invalid destination selection.", "error")
+        return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
+
+    merged_fields = {
+        "full_name": (request.form.get("full_name") or "").strip(),
+        "first_name": "",
+        "last_name": "",
+        "nickname": "",
+        "organization": (request.form.get("organization") or "").strip(),
+        "job_title": (request.form.get("job_title") or "").strip(),
+        "birthday": "",
+        "address": "",
+        "note": (request.form.get("note") or "").strip(),
+        "emails": parse_multivalue_form("emails"),
+        "phones": parse_multivalue_form("phones"),
+        "urls": [],
+        "categories": [],
+        "uid": str(uuid.uuid4()),
+    }
+    if not merged_fields["full_name"]:
+        flash("Merged contact needs a full name.", "error")
+        return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
+
+    try:
+        source_client = get_client_for_profile(int(source_refs[0]["profile_id"]))
+        source_vcard, _etag = source_client.get_contact(
+            f"{source_refs[0]['book_path'].rstrip('/')}/{source_refs[0]['filename']}"
+        )
+        merged_vcard = build_vcard_from_fields(merged_fields)
+        merged_vcard = merge_unknown_fields_into_vcard(source_vcard, merged_vcard)
+
+        dest_client = get_client_for_profile(dest_profile_id)
+        merged_filename = f"{merged_fields['uid']}.vcf"
+        dest_client.put_contact(dest_path, merged_filename, merged_vcard)
+        update_cached_contact_count(dest_profile_id, dest_path, None)
+    except Exception as exc:
+        flash(f"Merge mitigation failed: {exc}", "error")
+        return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
+
+    log_event(
+        "quality_action_status",
+        details={
+            "queue_key": queue_key,
+            "status": "resolved",
+            "status_label": QUALITY_ACTION_STATUSES["resolved"],
+            "mitigation": "merge_created",
+            "dest_profile_id": dest_profile_id,
+            "dest_path": dest_path,
+            "dest_filename": merged_filename,
+        },
+    )
+    flash(f"Mitigation applied. Merged contact created in {dest_path}.", "success")
+    return redirect(url_for("quality_review_queue", status="resolved"))
 
 
 @app.route("/quality/review-queue/status", methods=["POST"])
@@ -1071,13 +1259,20 @@ def parse_multivalue_form(field_name):
     values = []
     for raw in request.form.getlist(field_name):
         text = (raw or "").strip()
-        if text:
-            values.append(text)
+        if not text:
+            continue
+        # Accept either repeated values or newline/comma-separated blocks.
+        parts = re.split(r"[\r\n,]+", text)
+        for part in parts:
+            cleaned = (part or "").strip()
+            if cleaned:
+                values.append(cleaned)
     if values:
-        return values
-    # Backwards compatibility with older comma-separated inputs.
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(values))
     fallback = request.form.get(field_name, "")
-    return [part.strip() for part in fallback.split(",") if part.strip()]
+    parts = re.split(r"[\r\n,]+", fallback or "")
+    return [part.strip() for part in parts if part.strip()]
 
 
 def contact_fields_from_form(existing_uid=None):
@@ -2728,6 +2923,7 @@ def profile_contact_quality(profile_id, collection_path):
         flash(f"Unable to access profile: {exc}", "error")
         return redirect_back_or("connections")
     try:
+        profile = credential_store.get_profile(profile_id) or {}
         books = credential_store.get_cached_address_books(profile_id)
         book = normalize_book_for_template(
             next((b for b in books if b["path"] == collection_path), None),
@@ -2738,6 +2934,10 @@ def profile_contact_quality(profile_id, collection_path):
             try:
                 parsed = vcard_to_dict(item["vcard"])
                 parsed["filename"] = get_contact_filename(item["href"])
+                parsed["profile_id"] = profile_id
+                parsed["profile_name"] = profile.get("name")
+                parsed["book_path"] = book.get("path")
+                parsed["book_name"] = book.get("display_name")
                 contacts.append(parsed)
             except Exception as exc:
                 app.logger.warning("Skipping invalid contact during quality scan: %s", exc)

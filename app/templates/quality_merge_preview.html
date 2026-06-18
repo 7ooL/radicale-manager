@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Merge Mitigation Preview</h1>
+    <p class="muted">Compare both contacts, choose final values, and select where the merged record will live before applying mitigation.</p>
+
+    <div class="summary-grid quality-summary">
+      <div class="summary-card">
+        <h2>Duplicate Type</h2>
+        <p>{{ entry.duplicate_type or 'Unknown' }}</p>
+      </div>
+      <div class="summary-card">
+        <h2>Overall Match Score</h2>
+        <p>{{ entry.match_score or 'n/a' }}</p>
+      </div>
+      <div class="summary-card">
+        <h2>Confidence</h2>
+        <p>{{ entry.confidence or 'n/a' }}</p>
+      </div>
+      <div class="summary-card">
+        <h2>Current Stage</h2>
+        <p>{{ entry.status|replace('_', ' ')|title }}</p>
+      </div>
+    </div>
+
+    <section class="summary-card full-width">
+      <h2>Source Contacts</h2>
+      <div class="merge-preview-grid">
+        {% for source in source_details %}
+          <article class="summary-card merge-card">
+            <h3>{{ source.ref.display or source.fields.full_name or source.ref.filename }}</h3>
+            <p class="muted compact">{{ source.ref.profile_name }} / {{ source.ref.book_name }}</p>
+            {% if source.fields.emails %}<p class="muted compact">Emails: {{ source.fields.emails|join(', ') }}</p>{% endif %}
+            {% if source.fields.phones %}<p class="muted compact">Phones: {{ source.fields.phones|join(', ') }}</p>{% endif %}
+            {% if source.fields.organization %}<p class="muted compact">Org: {{ source.fields.organization }}</p>{% endif %}
+            {% if source.fields.job_title %}<p class="muted compact">Title: {{ source.fields.job_title }}</p>{% endif %}
+            {% if source.fields.note %}<p class="muted compact">Note: {{ source.fields.note }}</p>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <form method="post" action="{{ url_for('quality_review_queue_merge_apply') }}" class="summary-card full-width">
+      <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+
+      <h2>Merged Record</h2>
+      <label>
+        Full Name
+        <input type="text" name="full_name" value="{{ merged_defaults.full_name }}" required />
+      </label>
+      <label>
+        Organization
+        <input type="text" name="organization" value="{{ merged_defaults.organization }}" />
+      </label>
+      <label>
+        Job Title
+        <input type="text" name="job_title" value="{{ merged_defaults.job_title }}" />
+      </label>
+      <label>
+        Emails (one per line)
+        <textarea name="emails" rows="4">{% if merged_defaults.emails %}{{ merged_defaults.emails|join('\n') }}{% endif %}</textarea>
+      </label>
+      <label>
+        Phones (one per line)
+        <textarea name="phones" rows="4">{% if merged_defaults.phones %}{{ merged_defaults.phones|join('\n') }}{% endif %}</textarea>
+      </label>
+      <label>
+        Note
+        <textarea name="note" rows="3">{{ merged_defaults.note }}</textarea>
+      </label>
+      <label>
+        Destination Address Book
+        <select name="destination" required>
+          {% for destination in destinations %}
+            <option value="{{ destination.value }}" {% if destination.value == default_destination %}selected{% endif %}>{{ destination.display }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" name="confirm_merge" value="yes" required />
+        I confirm this will create one merged record in the destination book.
+      </label>
+      <div class="button-row">
+        <button class="button" type="submit">Apply Mitigation</button>
+        <a class="button secondary" href="{{ url_for('quality_review_queue') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

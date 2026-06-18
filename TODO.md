@@ -130,7 +130,7 @@ Goal: become a contact quality and migration platform.
 - [x] Support ignore (non-destructive queue)
 - [x] Support manual review (non-destructive queue + status transitions)
 - [x] Support merge recommendation (non-destructive queue)
-- [ ] Support approved merge
+- [x] Support approved merge (preview + explicit confirmation + destination selection)
 
 ### Contact Normalization
 

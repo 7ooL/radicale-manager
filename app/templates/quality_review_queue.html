@@ -10,6 +10,7 @@
         {% for status_key, status_label in status_options.items() %}
           <div>
             <strong>{{ status_label }}</strong>
+            <span class="stage-help" title="{{ status_descriptions.get(status_key) }}">?</span>
             <span class="muted">{{ status_descriptions.get(status_key) }}</span>
           </div>
         {% endfor %}
@@ -105,6 +106,9 @@
               {% if entry.merged_preview.phones %}<p class="muted compact">Phones: {{ entry.merged_preview.phones|join(', ') }}</p>{% endif %}
             </article>
           </div>
+          <div class="button-row">
+            <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">Preview and Apply Mitigation</a>
+          </div>
         {% endif %}
 
         <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
@@ -122,7 +126,7 @@
               {% endfor %}
             </select>
           </label>
-          <button class="button small secondary" type="submit">Update Stage</button>
+          <button class="button small secondary" type="submit">Save Stage</button>
         </form>
       </article>
     {% endmacro %}

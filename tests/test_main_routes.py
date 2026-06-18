@@ -462,10 +462,11 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Quality Review Queue", response.data)
         self.assertIn(b"Mark for review", response.data)
         self.assertIn(b"demo@example.test", response.data)
-        self.assertIn(b"Queued", response.data)
+        self.assertIn(b"Ready", response.data)
         self.assertIn(b"Update workflow stage", response.data)
         self.assertIn(b"Active Queue", response.data)
         self.assertIn(b"Closed Items", response.data)
+        self.assertIn(b"Workflow Stages", response.data)
 
     def test_quality_review_queue_shows_merge_preview_cards(self):
         self.store.add_event(
@@ -495,6 +496,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Contact B", response.data)
         self.assertIn(b"Suggested Merge Result", response.data)
         self.assertIn(b"Overall Match Score", response.data)
+        self.assertIn(b"Preview and Apply Mitigation", response.data)
 
     def test_quality_review_queue_status_transition_updates_item_state(self):
         queue_key = "global|||Email|demo@example.test|review"
@@ -526,6 +528,107 @@ class MainRoutesTest(unittest.TestCase):
         latest = events[0]
         self.assertEqual(latest["details"].get("queue_key"), queue_key)
         self.assertEqual(latest["details"].get("status"), "in_review")
+
+    def test_quality_merge_preview_page_loads_with_destination_options(self):
+        queue_key = "global|||Name Similarity|Demo Contact ~ Second Contact|recommend_merge"
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "global",
+                "duplicate_type": "Name Similarity",
+                "duplicate_value": "Demo Contact ~ Second Contact",
+                "match_score": "85",
+                "confidence": "Medium",
+                "status": "queued",
+                "queue_key": queue_key,
+                "duplicate_contacts": [
+                    {
+                        "display": "Demo Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-1.vcf",
+                    },
+                    {
+                        "display": "Second Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-2.vcf",
+                    },
+                ],
+            },
+            source="app",
+        )
+
+        response = self.client.get(f"/quality/review-queue/merge-preview?queue_key={queue_key}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Merge Mitigation Preview", response.data)
+        self.assertIn(b"Destination Address Book", response.data)
+        self.assertIn(b"Apply Mitigation", response.data)
+
+    def test_quality_merge_apply_creates_merged_contact_and_marks_mitigated(self):
+        queue_key = "global|||Name Similarity|Demo Contact ~ Second Contact|recommend_merge"
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "global",
+                "duplicate_type": "Name Similarity",
+                "duplicate_value": "Demo Contact ~ Second Contact",
+                "match_score": "85",
+                "confidence": "Medium",
+                "status": "queued",
+                "queue_key": queue_key,
+                "duplicate_contacts": [
+                    {
+                        "display": "Demo Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-1.vcf",
+                    },
+                    {
+                        "display": "Second Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-2.vcf",
+                    },
+                ],
+            },
+            source="app",
+        )
+
+        response = self.client.post(
+            "/quality/review-queue/merge-apply",
+            data={
+                "queue_key": queue_key,
+                "full_name": "Merged Demo Contact",
+                "organization": "",
+                "job_title": "",
+                "emails": "merged@example.test",
+                "phones": "555-0109",
+                "note": "Merged record",
+                "destination": f"{self.profile_id}::demo/dest",
+                "confirm_merge": "yes",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/quality/review-queue?status=resolved", response.location)
+        self.assertTrue(any(path.startswith("demo/dest/") for path in FakeRadicaleClient.contacts.keys()))
+        status_events = self.store.get_recent_events(limit=5, actions=["quality_action_status"])
+        self.assertTrue(status_events)
+        self.assertEqual(status_events[0]["details"].get("status"), "resolved")
 
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(
