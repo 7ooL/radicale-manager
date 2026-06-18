@@ -170,6 +170,45 @@ class ContactUtilsTest(unittest.TestCase):
         self.assertIn("X-CUSTOM-FIELD:Preserve Me", merged)
         self.assertIn("X-ANOTHER;TYPE=WORK:Still Here", merged)
 
+    def test_merge_unknown_fields_skips_prodid_to_avoid_duplicate_singleton_fields(self):
+        original_a = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-a\n"
+            "FN:Ashley Jacoby\n"
+            "N:Jacoby;Ashley;;;\n"
+            "PRODID:-//Apple Inc.//iOS 26.5//EN\n"
+            "X-CUSTOM-A:keep-a\n"
+            "END:VCARD\n"
+        )
+        original_b = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-b\n"
+            "FN:Ashley Jacoby\n"
+            "N:Jacoby;Ashley;;;\n"
+            "PRODID:-//Apple Inc.//iPhone OS 26.5//EN\n"
+            "X-CUSTOM-B:keep-b\n"
+            "END:VCARD\n"
+        )
+        rebuilt = build_vcard_from_fields(
+            {
+                "uid": "merged-contact",
+                "full_name": "Ashley Jacoby",
+                "first_name": "Ashley",
+                "last_name": "Jacoby",
+                "emails": ["ashley@example.test"],
+            }
+        )
+
+        merged = merge_unknown_fields_into_vcard(original_a, rebuilt)
+        merged = merge_unknown_fields_into_vcard(original_b, merged)
+
+        self.assertEqual(merged.count("PRODID"), 0)
+        self.assertIn("X-CUSTOM-A:keep-a", merged)
+        self.assertIn("X-CUSTOM-B:keep-b", merged)
+        self.assertEqual(vcard_to_dict(merged)["full_name"], "Ashley Jacoby")
+
 
 if __name__ == "__main__":
     unittest.main()

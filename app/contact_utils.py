@@ -544,6 +544,7 @@ def merge_unknown_fields_into_vcard(original_vcard, rebuilt_vcard):
         "BEGIN",
         "END",
         "VERSION",
+        "PRODID",
         "FN",
         "N",
         "NICKNAME",
