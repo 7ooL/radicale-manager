@@ -536,6 +536,23 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(ignored_view.status_code, 200)
         self.assertIn(b"Unignore", ignored_view.data)
 
+        unignore_response = self.client.post(
+            "/quality/duplicate-ignore",
+            data={
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "ignored_current": "1",
+                "next": "/contacts/quality?show_ignored=1",
+            },
+        )
+        self.assertEqual(unignore_response.status_code, 302)
+
+        restored_view = self.client.get("/contacts/quality")
+        self.assertEqual(restored_view.status_code, 200)
+        self.assertNotIn(b"No duplicate email, phone, or exact-name matches found in this scope.", restored_view.data)
+        self.assertIn(b"demo@example.test", restored_view.data)
+
     def test_book_quality_scan_shows_merge_preview_link_for_queued_recommendation(self):
         queue_key = f"book|{self.profile_id}|demo/source|Email|demo@example.test|recommend_merge"
         self.store.add_event(
@@ -606,7 +623,8 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Mark for review", response.data)
         self.assertIn(b"demo@example.test", response.data)
         self.assertIn(b"Ready", response.data)
-        self.assertIn(b"Update workflow stage", response.data)
+        self.assertIn(b"Mark Mitigated", response.data)
+        self.assertIn(b"Dismiss", response.data)
         self.assertIn(b"Active Queue", response.data)
         self.assertIn(b"Closed Items", response.data)
         self.assertIn(b"Workflow Stages", response.data)
@@ -954,7 +972,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Mitigation result:", response.data)
         self.assertIn(b"source duplicates removed", response.data)
         self.assertNotIn(b"Preview and Apply Mitigation", response.data)
-        self.assertNotIn(b"Update workflow stage", response.data)
+        self.assertNotIn(b"Mark Mitigated", response.data)
 
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(
