@@ -3,7 +3,7 @@
   <div class="card">
     <h1>All Contacts</h1>
     <p class="muted">{{ contacts|length }} contacts across enabled connections and cached address books.</p>
-    <form method="get" action="{{ url_for('global_contacts') }}" class="global-search-panel">
+    <form method="get" action="{{ url_for('global_contacts') }}" class="global-search-panel contact-search">
       <div class="panel-heading">Search Scope</div>
       <label class="search-field search-field-wide">
         <span>Search</span>
@@ -38,6 +38,7 @@
       </div>
       <div class="panel-heading">Search Actions</div>
       <div class="search-actions">
+        <button id="toggle-global-select-mode" class="button small secondary" type="button">Select</button>
         <button class="button small" type="submit">Search</button>
         <a class="button small secondary" href="{{ url_for('global_contacts') }}">Reset</a>
       </div>
@@ -55,8 +56,9 @@
     {% endif %}
 
     {% if contacts %}
-      <form id="global-bulk-contacts-form" method="post" action="{{ url_for('global_bulk_contacts') }}" class="global-bulk-panel">
+      <form id="global-bulk-contacts-form" method="post" action="{{ url_for('global_bulk_contacts') }}" class="global-bulk-panel hidden">
         <div class="panel-heading">Bulk Actions (Selected Contacts)</div>
+        <p class="muted compact" id="global-bulk-selection-count">0 selected</p>
         <label class="search-field search-field-compact">
           <span>Bulk action</span>
           <select name="bulk_action" required>
@@ -94,10 +96,55 @@
         <p class="muted compact" id="global-contact-filter-count">{{ contacts|length }} contacts</p>
       </div>
 
+      <div class="contact-list" id="global-contact-list">
+        {% for contact in contacts %}
+          {% set email_text = contact.emails|join(', ') %}
+          {% set phone_text = contact.phones|join(', ') %}
+          {% set contact_ref = contact.profile_id ~ '::' ~ contact.book_path ~ '::' ~ contact.filename %}
+          {% set display_name = contact.full_name or contact.filename %}
+          {% set parts = display_name.split() %}
+          {% set initials = ((parts[0][:1] if parts else '?') ~ (parts[1][:1] if parts|length > 1 else ''))|upper %}
+          <article
+            class="contact-item"
+            data-name="{{ contact.full_name|lower }}"
+            data-book="{{ contact.book_name|lower }}"
+            data-profile="{{ contact.profile_name|lower }}"
+            data-organization="{{ contact.organization|lower }}"
+            data-email="{{ email_text|lower }}"
+            data-phone="{{ phone_text|lower }}"
+            data-search="{{ (contact.full_name ~ ' ' ~ contact.book_name ~ ' ' ~ contact.profile_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
+          >
+            <input class="contact-select hidden" form="global-bulk-contacts-form" name="contact_ref" value="{{ contact_ref }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" />
+            <a class="contact-main" href="{{ url_for('profile_view_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">
+              <span class="contact-avatar">{{ initials if initials else '?' }}</span>
+              <span class="contact-meta">
+                <strong>{{ display_name }}</strong>
+                <span>{{ contact.profile_name }} / {{ contact.book_name }}</span>
+                {% if phone_text %}
+                  <span>📞 {{ phone_text }}</span>
+                {% elif email_text %}
+                  <span>✉ {{ email_text }}</span>
+                {% endif %}
+              </span>
+            </a>
+            <details class="row-menu">
+              <summary aria-label="Open contact actions">⋯</summary>
+              <div class="row-menu-panel">
+                <a href="{{ url_for('profile_view_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">View</a>
+                <a href="{{ url_for('profile_edit_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">Edit</a>
+                <form method="post" action="{{ url_for('profile_delete_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">
+                  <button type="submit">Delete</button>
+                </form>
+              </div>
+            </details>
+          </article>
+        {% endfor %}
+      </div>
+
       <table class="data-table sortable-table global-contacts-table" id="global-contacts-table">
         <thead>
           <tr>
-            <th><input id="select-all-global-contacts" type="checkbox" aria-label="Select all contacts" /></th>
+            <th><input id="select-all-global-contacts" type="checkbox" aria-label="Select all contacts" class="hidden" /></th>
             <th><button class="sort-button active ascending" type="button" data-sort-key="name">Full Name</button></th>
             <th><button class="sort-button" type="button" data-sort-key="book">Book</button></th>
             <th><button class="sort-button" type="button" data-sort-key="profile">Connection</button></th>
@@ -122,7 +169,7 @@
               data-search="{{ (contact.full_name ~ ' ' ~ contact.book_name ~ ' ' ~ contact.profile_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
             >
               <td data-label="Select">
-                <input form="global-bulk-contacts-form" name="contact_ref" value="{{ contact_ref }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" />
+                <input class="contact-select hidden" form="global-bulk-contacts-form" name="contact_ref" value="{{ contact_ref }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" />
               </td>
               <td data-label="Full Name">
                 <a href="{{ url_for('profile_view_contact', profile_id=contact.profile_id, collection_path=contact.book_path, contact_filename=contact.filename) }}">{{ contact.full_name or contact.filename }}</a>
@@ -160,6 +207,11 @@
       const count = document.getElementById('global-contact-filter-count');
       const empty = document.getElementById('no-global-contact-results');
       const selectAll = document.getElementById('select-all-global-contacts');
+      const list = document.getElementById('global-contact-list');
+      const listItems = list ? Array.from(list.querySelectorAll('.contact-item')) : [];
+      const bulkForm = document.getElementById('global-bulk-contacts-form');
+      const bulkSelectionCount = document.getElementById('global-bulk-selection-count');
+      const toggleSelectMode = document.getElementById('toggle-global-select-mode');
       const bulkAction = document.querySelector('select[name="bulk_action"]');
       const bulkDestinationLabel = document.getElementById('global-bulk-destination-label');
       const bulkDestinationSelect = document.getElementById('global-bulk-destination-select');
@@ -180,8 +232,13 @@
           row.hidden = !matches;
           if (matches) visible += 1;
         });
+        listItems.forEach(item => {
+          const matches = !query || normalize(item.dataset.search).includes(query);
+          item.hidden = !matches;
+        });
         count.textContent = `${visible} of ${rows.length} contacts`;
         empty.classList.toggle('hidden', visible !== 0);
+        updateSelectionCount();
       }
 
       function applySort(nextKey) {
@@ -219,6 +276,36 @@
             const checkbox = row.querySelector('input[name="contact_ref"]');
             if (checkbox && !row.hidden) checkbox.checked = selectAll.checked;
           });
+          listItems.forEach(item => {
+            const checkbox = item.querySelector('input[name="contact_ref"]');
+            if (checkbox && !item.hidden) checkbox.checked = selectAll.checked;
+          });
+          updateSelectionCount();
+        });
+      }
+      function updateSelectionCount() {
+        if (!bulkSelectionCount) return;
+        const selected = document.querySelectorAll('input[name="contact_ref"]:checked').length;
+        bulkSelectionCount.textContent = `${selected} selected`;
+      }
+      if (toggleSelectMode && bulkForm) {
+        const setSelectMode = enabled => {
+          bulkForm.classList.toggle('hidden', !enabled);
+          toggleSelectMode.textContent = enabled ? 'Done' : 'Select';
+          document.querySelectorAll('.contact-select').forEach(cb => cb.classList.toggle('hidden', !enabled));
+          if (!enabled) {
+            document.querySelectorAll('input[name="contact_ref"]').forEach(cb => { cb.checked = false; });
+            if (selectAll) selectAll.checked = false;
+          }
+          updateSelectionCount();
+        };
+        let selectMode = false;
+        toggleSelectMode.addEventListener('click', () => {
+          selectMode = !selectMode;
+          setSelectMode(selectMode);
+        });
+        document.querySelectorAll('input[name="contact_ref"]').forEach(cb => {
+          cb.addEventListener('change', updateSelectionCount);
         });
       }
       if (bulkAction && bulkDestinationLabel && bulkDestinationSelect) {
@@ -233,6 +320,7 @@
         updateBulkDestination();
       }
       applyFilter();
+      updateSelectionCount();
     })();
   </script>
 {% endblock %}

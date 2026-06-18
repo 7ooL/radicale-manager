@@ -18,7 +18,19 @@
       <a class="button secondary" href="{{ url_for('profile_export_addressbook', profile_id=profile_id, collection_path=book.path) }}">Export Book</a>
     </div>
     {% if contacts %}
-      <form id="bulk-contacts-form" method="post" action="{{ url_for('profile_bulk_contacts', profile_id=profile_id, collection_path=book.path) }}" class="bulk-form">
+      <div class="table-toolbar contact-search">
+        <label class="filter-label">
+          Filter contacts
+          <input id="contact-filter" type="search" placeholder="Type a name, email, phone, company..." autocomplete="off" />
+        </label>
+        <div class="contact-toolbar-actions">
+          <button id="toggle-select-mode" class="button secondary small" type="button">Select</button>
+          <p class="muted compact" id="contact-filter-count">{{ contacts|length }} contacts</p>
+        </div>
+      </div>
+
+      <form id="bulk-contacts-form" method="post" action="{{ url_for('profile_bulk_contacts', profile_id=profile_id, collection_path=book.path) }}" class="bulk-form hidden">
+        <p class="muted compact" id="bulk-selection-count">0 selected</p>
         <label>
           Bulk action
           <select name="bulk_action" required>
@@ -44,17 +56,53 @@
         {% endif %}
         <button class="button small" type="submit">Apply</button>
       </form>
-      <div class="table-toolbar">
-        <label class="filter-label">
-          Filter contacts
-          <input id="contact-filter" type="search" placeholder="Type a name, email, phone, company..." autocomplete="off" />
-        </label>
-        <p class="muted compact" id="contact-filter-count">{{ contacts|length }} contacts</p>
+
+      <div class="contact-list" id="contact-list">
+        {% for contact in contacts %}
+          {% set email_text = contact.emails|join(', ') %}
+          {% set phone_text = contact.phones|join(', ') %}
+          {% set display_name = contact.full_name or contact.filename %}
+          {% set parts = display_name.split() %}
+          {% set initials = ((parts[0][:1] if parts else '?') ~ (parts[1][:1] if parts|length > 1 else ''))|upper %}
+          <article
+            class="contact-item"
+            data-name="{{ contact.full_name|lower }}"
+            data-organization="{{ contact.organization|lower }}"
+            data-email="{{ email_text|lower }}"
+            data-phone="{{ phone_text|lower }}"
+            data-search="{{ (contact.full_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
+          >
+            <input class="contact-select hidden" form="bulk-contacts-form" name="contact_filename" value="{{ contact.filename }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" />
+            <a class="contact-main" href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
+              <span class="contact-avatar">{{ initials if initials else '?' }}</span>
+              <span class="contact-meta">
+                <strong>{{ display_name }}</strong>
+                {% if contact.organization %}<span>{{ contact.organization }}</span>{% endif %}
+                {% if phone_text %}
+                  <span>📞 {{ phone_text }}</span>
+                {% elif email_text %}
+                  <span>✉ {{ email_text }}</span>
+                {% endif %}
+              </span>
+            </a>
+            <details class="row-menu">
+              <summary aria-label="Open contact actions">⋯</summary>
+              <div class="row-menu-panel">
+                <a href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">View</a>
+                <a href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
+                <form method="post" action="{{ url_for('profile_delete_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
+                  <button type="submit">Delete</button>
+                </form>
+              </div>
+            </details>
+          </article>
+        {% endfor %}
       </div>
+
       <table class="data-table sortable-table" id="contacts-table">
         <thead>
           <tr>
-            <th><input id="select-all-contacts" type="checkbox" aria-label="Select all contacts" /></th>
+            <th><input id="select-all-contacts" type="checkbox" aria-label="Select all contacts" class="hidden" /></th>
             <th><button class="sort-button active ascending" type="button" data-sort-key="name">Full Name</button></th>
             <th><button class="sort-button" type="button" data-sort-key="organization">Organization</button></th>
             <th><button class="sort-button" type="button" data-sort-key="email">Email</button></th>
@@ -73,7 +121,7 @@
               data-phone="{{ phone_text|lower }}"
               data-search="{{ (contact.full_name ~ ' ' ~ contact.organization ~ ' ' ~ email_text ~ ' ' ~ phone_text ~ ' ' ~ contact.filename)|lower }}"
             >
-              <td data-label="Select"><input form="bulk-contacts-form" name="contact_filename" value="{{ contact.filename }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" /></td>
+              <td data-label="Select"><input class="contact-select hidden" form="bulk-contacts-form" name="contact_filename" value="{{ contact.filename }}" type="checkbox" aria-label="Select {{ contact.full_name or contact.filename }}" /></td>
               <td data-label="Full Name"><a href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">{{ contact.full_name }}</a></td>
               <td data-label="Organization">{{ contact.organization }}</td>
               <td data-label="Email">{{ email_text }}</td>
@@ -101,6 +149,11 @@
       const count = document.getElementById('contact-filter-count');
       const empty = document.getElementById('no-contact-results');
       const selectAll = document.getElementById('select-all-contacts');
+      const list = document.getElementById('contact-list');
+      const listItems = list ? Array.from(list.querySelectorAll('.contact-item')) : [];
+      const toggleSelectMode = document.getElementById('toggle-select-mode');
+      const bulkForm = document.getElementById('bulk-contacts-form');
+      const bulkSelectionCount = document.getElementById('bulk-selection-count');
       const bulkAction = document.querySelector('select[name="bulk_action"]');
       const bulkDestinationLabel = document.getElementById('bulk-destination-label');
       const bulkDestinationSelect = document.getElementById('bulk-destination-select');
@@ -121,8 +174,13 @@
           row.hidden = !matches;
           if (matches) visible += 1;
         });
+        listItems.forEach(item => {
+          const matches = !query || normalize(item.dataset.search).includes(query);
+          item.hidden = !matches;
+        });
         count.textContent = `${visible} of ${rows.length} contacts`;
         empty.classList.toggle('hidden', visible !== 0);
+        updateSelectionCount();
       }
 
       function applySort(nextKey) {
@@ -160,6 +218,37 @@
             const checkbox = row.querySelector('input[name="contact_filename"]');
             if (checkbox && !row.hidden) checkbox.checked = selectAll.checked;
           });
+          listItems.forEach(item => {
+            const checkbox = item.querySelector('input[name="contact_filename"]');
+            if (checkbox && !item.hidden) checkbox.checked = selectAll.checked;
+          });
+          updateSelectionCount();
+        });
+      }
+      function updateSelectionCount() {
+        if (!bulkSelectionCount) return;
+        const selected = document.querySelectorAll('input[name="contact_filename"]:checked').length;
+        bulkSelectionCount.textContent = `${selected} selected`;
+      }
+      if (toggleSelectMode && bulkForm) {
+        const setSelectMode = enabled => {
+          bulkForm.classList.toggle('hidden', !enabled);
+          document.body.classList.toggle('select-mode', enabled);
+          toggleSelectMode.textContent = enabled ? 'Done' : 'Select';
+          document.querySelectorAll('.contact-select').forEach(cb => cb.classList.toggle('hidden', !enabled));
+          if (!enabled) {
+            document.querySelectorAll('input[name="contact_filename"]').forEach(cb => { cb.checked = false; });
+            if (selectAll) selectAll.checked = false;
+          }
+          updateSelectionCount();
+        };
+        let selectMode = false;
+        toggleSelectMode.addEventListener('click', () => {
+          selectMode = !selectMode;
+          setSelectMode(selectMode);
+        });
+        document.querySelectorAll('input[name="contact_filename"]').forEach(cb => {
+          cb.addEventListener('change', updateSelectionCount);
         });
       }
       if (bulkAction && bulkDestinationLabel && bulkDestinationSelect) {
@@ -174,6 +263,7 @@
         updateBulkDestination();
       }
       applyFilter();
+      updateSelectionCount();
     })();
   </script>
 {% endblock %}
