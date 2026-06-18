@@ -299,6 +299,15 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Second Contact", response.data)
         self.assertNotIn(b"Demo Contact", response.data)
 
+    def test_contact_transfer_page_lists_destinations(self):
+        response = self.client.get(
+            f"/profiles/{self.profile_id}/books/demo/source/contacts/contact-1.vcf/transfer?action=move"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Move Contact", response.data)
+        self.assertIn(b"Demo / Destination", response.data)
+
     def test_address_books_page_lists_cached_books(self):
         response = self.client.get("/books")
 

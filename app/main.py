@@ -93,6 +93,7 @@ def get_active_mobile_tab(endpoint):
         "global_contacts",
         "profile_view_contacts",
         "profile_view_contact",
+        "profile_contact_transfer",
         "profile_new_contact",
         "profile_edit_contact",
         "profile_contact_quality",
@@ -174,6 +175,8 @@ def build_breadcrumbs(endpoint, view_args):
                 crumbs.append({"name": "Import", "url": None})
             elif endpoint == "profile_contact_quality":
                 crumbs.append({"name": "Quality Scan", "url": None})
+            elif endpoint == "profile_contact_transfer":
+                crumbs.append({"name": "Move / Copy", "url": None})
             if crumbs[-1]["url"]:
                 crumbs[-1]["url"] = None
             return crumbs
@@ -2050,16 +2053,10 @@ def profile_view_contact(profile_id, collection_path, contact_filename):
         contact["filename"] = contact_filename
         contact["etag"] = etag
         contact["href"] = contact_href
-        # prepare destination options (enabled profiles and their books)
-        destinations = []
-        try:
-            enabled = credential_store.get_enabled_profiles()
-            for pp in enabled:
-                books_list = credential_store.get_cached_address_books(pp["id"]) or []
-                for b in books_list:
-                    destinations.append({"profile_id": pp["id"], "profile_name": pp["name"], "path": b["path"], "display": f"{pp['name']} / {b['display_name']}"})
-        except Exception:
-            destinations = []
+        destinations = build_contact_destinations(
+            exclude_profile_id=profile_id,
+            exclude_collection_path=collection_path,
+        )
         return render_template(
             "contact_detail.html",
             title=f"Contact - {contact_filename}",
@@ -2072,6 +2069,49 @@ def profile_view_contact(profile_id, collection_path, contact_filename):
         app.logger.exception("Unable to load contact %s", contact_filename)
         flash(f"Unable to load contact: {exc}", "error")
         return redirect(url_for("profile_view_contacts", profile_id=profile_id, collection_path=collection_path))
+
+
+@app.route("/profiles/<int:profile_id>/books/<path:collection_path>/contacts/<contact_filename>/transfer")
+def profile_contact_transfer(profile_id, collection_path, contact_filename):
+    action = (request.args.get("action") or "copy").strip().lower()
+    if action not in ("copy", "move"):
+        action = "copy"
+    try:
+        client = get_client_for_profile(profile_id)
+        books = credential_store.get_cached_address_books(profile_id)
+        book = normalize_book_for_template(
+            next((b for b in books if b["path"] == collection_path), None),
+            fallback_path=collection_path,
+        )
+        contact_href = f"{collection_path.rstrip('/')}/{contact_filename}"
+        vcard_text, _etag = client.get_contact(contact_href)
+        contact = parse_vcard_contact(vcard_text)
+        contact["filename"] = contact_filename
+        destinations = build_contact_destinations(
+            exclude_profile_id=profile_id,
+            exclude_collection_path=collection_path,
+        )
+        return render_template(
+            "contact_transfer.html",
+            title=f"{action.title()} Contact",
+            action=action,
+            profile_id=profile_id,
+            book=book,
+            contact=contact,
+            destinations=destinations,
+            contact_filename=contact_filename,
+        )
+    except Exception as exc:
+        app.logger.exception("Unable to load transfer page for contact %s", contact_filename)
+        flash(f"Unable to load transfer page: {exc}", "error")
+        return redirect(
+            url_for(
+                "profile_view_contact",
+                profile_id=profile_id,
+                collection_path=collection_path,
+                contact_filename=contact_filename,
+            )
+        )
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/export")

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card form-card">
+    <h1>{{ action|title }} Contact</h1>
+    <p class="muted">{{ contact.summary.full_name or contact_filename }} · {{ book.name }}</p>
+    {% if destinations %}
+      <form method="post" action="{% if action == 'move' %}{{ url_for('profile_move_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact_filename) }}{% else %}{{ url_for('profile_copy_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact_filename) }}{% endif %}">
+        <label>
+          Destination
+          <select name="dest" required>
+            <option value="">Choose destination</option>
+            {% for d in destinations %}
+              <option value="{{ d.profile_id }}::{{ d.path }}">{{ d.display }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="button-row">
+          <button class="button" type="submit">{% if action == 'move' %}Move Contact{% else %}Copy Contact{% endif %}</button>
+          <a class="button secondary" href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact_filename) }}">Cancel</a>
+        </div>
+      </form>
+    {% else %}
+      <p>No destinations available yet. Add another address book or connection first.</p>
+      <a class="button secondary" href="{{ url_for('profile_view_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact_filename) }}">Back to Contact</a>
+    {% endif %}
+  </div>
+{% endblock %}

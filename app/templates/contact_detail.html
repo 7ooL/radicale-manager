@@ -1,37 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="card">
-    <div class="detail-header">
-      <div>
-        <h1>{{ contact.summary.full_name or contact.filename }}</h1>
-        <p class="muted">{{ book.name }} / {{ contact.filename }}</p>
+    {% set display_name = contact.summary.full_name or contact.filename %}
+    {% set parts = display_name.split() %}
+    {% set initials = ((parts[0][:1] if parts else '?') ~ (parts[1][:1] if parts|length > 1 else ''))|upper %}
+    {% set primary_phone = contact.summary.phones[0] if contact.summary.phones else '' %}
+    {% set sms_phone = (primary_phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '')) if primary_phone else '' %}
+    {% set primary_email = contact.summary.emails[0] if contact.summary.emails else '' %}
+    <div class="contact-profile-header">
+      <div class="contact-profile-main">
+        <span class="contact-profile-avatar">{{ initials if initials else '?' }}</span>
+        <div>
+          <h1>{{ display_name }}</h1>
+          <p class="muted compact">{{ contact.summary.organization or '' }}</p>
+          <p class="muted">{{ book.name }}</p>
+        </div>
       </div>
-      <div class="detail-actions">
+      <div class="detail-actions detail-primary-actions">
         <a class="button small" href="{{ url_for('profile_edit_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Edit</a>
-        <a class="button small secondary" href="{{ url_for('profile_export_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Export</a>
-        <a class="button small secondary" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Back to list</a>
-        <form method="post" action="{{ url_for('profile_duplicate_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
-          <button class="button small" type="submit">Duplicate</button>
-        </form>
-        {% if destinations %}
-          <form class="inline-action-form" method="post" action="{{ url_for('profile_copy_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
-            <select name="dest">
-              {% for d in destinations %}
-                <option value="{{ d.profile_id }}::{{ d.path }}">{{ d.display }}</option>
-              {% endfor %}
-            </select>
-            <button class="button small" type="submit">Copy to...</button>
-          </form>
-          <form class="inline-action-form" method="post" action="{{ url_for('profile_move_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
-            <select name="dest">
-              {% for d in destinations %}
-                <option value="{{ d.profile_id }}::{{ d.path }}">{{ d.display }}</option>
-              {% endfor %}
-            </select>
-            <button class="button small secondary" type="submit">Move to...</button>
-          </form>
-        {% endif %}
+        <details class="row-menu">
+          <summary aria-label="Open contact actions">⋯</summary>
+          <div class="row-menu-panel">
+            <a href="{{ url_for('profile_export_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">Export</a>
+            <form method="post" action="{{ url_for('profile_duplicate_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
+              <button type="submit">Duplicate</button>
+            </form>
+            {% if destinations %}
+              <a href="{{ url_for('profile_contact_transfer', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename, action='copy') }}">Copy to...</a>
+              <a href="{{ url_for('profile_contact_transfer', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename, action='move') }}">Move to...</a>
+            {% endif %}
+            <form method="post" action="{{ url_for('profile_delete_contact', profile_id=profile_id, collection_path=book.path, contact_filename=contact.filename) }}">
+              <button type="submit">Delete</button>
+            </form>
+          </div>
+        </details>
       </div>
+    </div>
+    <div class="detail-quick-actions">
+      {% if primary_phone %}
+        <a class="button secondary small" href="tel:{{ sms_phone }}">Call</a>
+        <a class="button secondary small" href="sms:{{ sms_phone }}">Message</a>
+      {% endif %}
+      {% if primary_email %}
+        <a class="button secondary small" href="mailto:{{ primary_email }}">Email</a>
+      {% endif %}
+      <a class="button secondary small" href="{{ url_for('profile_view_contacts', profile_id=profile_id, collection_path=book.path) }}">Back</a>
     </div>
 
     <div class="tabs">

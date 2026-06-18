@@ -272,6 +272,47 @@ textarea {
   flex-wrap: wrap;
 }
 
+.contact-profile-header {
+  display: grid;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.contact-profile-main {
+  display: grid;
+  grid-template-columns: 3.1rem minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.contact-profile-avatar {
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+}
+
+.contact-profile-main h1 {
+  margin: 0;
+}
+
+.detail-primary-actions {
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.detail-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
 .inline-action-form {
   display: flex;
   gap: 0.5rem;
