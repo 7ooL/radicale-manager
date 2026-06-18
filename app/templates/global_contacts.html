@@ -3,46 +3,49 @@
   <div class="card">
     <h1>All Contacts</h1>
     <p class="muted">{{ contacts|length }} contacts across enabled connections and cached address books.</p>
-    <form method="get" action="{{ url_for('global_contacts') }}" class="global-search-panel contact-search">
-      <div class="panel-heading">Search Scope</div>
-      <label class="search-field search-field-wide">
-        <span>Search</span>
-        <input type="search" name="q" value="{{ search_filters.q }}" placeholder="Name, email, phone, company..." />
-      </label>
-      <label class="search-field">
-        <span>Connection</span>
-        <select name="profile_id">
-          <option value="">All connections</option>
-          {% for profile in profiles %}
-            <option value="{{ profile.id }}" {% if search_filters.profile_id == profile.id|string %}selected{% endif %}>{{ profile.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="search-field">
-        <span>Address Book</span>
-        <select name="book_path">
-          <option value="">All books</option>
-          {% for pb in profile_books %}
-            <option value="{{ pb.path }}" {% if search_filters.book_path == pb.path %}selected{% endif %}>{{ pb.profile_name }} / {{ pb.display_name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="search-field search-field-compact">
-        <span>Recently modified (days)</span>
-        <input type="number" min="0" name="recent_days" value="{{ search_filters.recent_days or '' }}" placeholder="7" />
-      </label>
-      <div class="panel-heading">Presence Filters</div>
-      <div class="search-flags">
-        <label class="checkbox-label"><input type="checkbox" name="has_email" value="1" {% if search_filters.has_email %}checked{% endif %} /> Has email</label>
-        <label class="checkbox-label"><input type="checkbox" name="has_phone" value="1" {% if search_filters.has_phone %}checked{% endif %} /> Has phone</label>
-      </div>
-      <div class="panel-heading">Search Actions</div>
-      <div class="search-actions">
-        <button id="toggle-global-select-mode" class="button small secondary" type="button">Select</button>
-        <button class="button small" type="submit">Search</button>
-        <a class="button small secondary" href="{{ url_for('global_contacts') }}">Reset</a>
-      </div>
-    </form>
+    {% set filters_active = search_filters.q or search_filters.profile_id or search_filters.book_path or search_filters.has_email or search_filters.has_phone or search_filters.recent_days %}
+    <details class="contact-search search-collapse" {% if filters_active %}open{% endif %}>
+      <summary>Search Scope</summary>
+      <form method="get" action="{{ url_for('global_contacts') }}" class="global-search-panel">
+        <label class="search-field search-field-wide">
+          <span>Search</span>
+          <input type="search" name="q" value="{{ search_filters.q }}" placeholder="Name, email, phone, company..." />
+        </label>
+        <label class="search-field">
+          <span>Connection</span>
+          <select name="profile_id">
+            <option value="">All connections</option>
+            {% for profile in profiles %}
+              <option value="{{ profile.id }}" {% if search_filters.profile_id == profile.id|string %}selected{% endif %}>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="search-field">
+          <span>Address Book</span>
+          <select name="book_path">
+            <option value="">All books</option>
+            {% for pb in profile_books %}
+              <option value="{{ pb.path }}" {% if search_filters.book_path == pb.path %}selected{% endif %}>{{ pb.profile_name }} / {{ pb.display_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="search-field search-field-compact">
+          <span>Recently modified (days)</span>
+          <input type="number" min="0" name="recent_days" value="{{ search_filters.recent_days or '' }}" placeholder="7" />
+        </label>
+        <div class="panel-heading">Presence Filters</div>
+        <div class="search-flags">
+          <label class="checkbox-label"><input type="checkbox" name="has_email" value="1" {% if search_filters.has_email %}checked{% endif %} /> Has email</label>
+          <label class="checkbox-label"><input type="checkbox" name="has_phone" value="1" {% if search_filters.has_phone %}checked{% endif %} /> Has phone</label>
+        </div>
+        <div class="panel-heading">Search Actions</div>
+        <div class="search-actions">
+          <button id="toggle-global-select-mode" class="button small secondary" type="button">Select</button>
+          <button class="button small" type="submit">Search</button>
+          <a class="button small secondary" href="{{ url_for('global_contacts') }}">Reset</a>
+        </div>
+      </form>
+    </details>
 
     {% if errors %}
       <div class="result-block">

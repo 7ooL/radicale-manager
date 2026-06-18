@@ -731,6 +731,39 @@ textarea {
   backdrop-filter: blur(8px);
 }
 
+.search-collapse > summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #475569;
+  padding: 0.2rem 0.25rem;
+}
+
+.search-collapse > summary::-webkit-details-marker {
+  display: none;
+}
+
+.search-collapse > summary::after {
+  content: "▾";
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.search-collapse:not([open]) > summary::after {
+  content: "▸";
+}
+
+.search-collapse > .global-search-panel {
+  margin: 0.4rem 0 0;
+}
+
 .contact-toolbar-actions {
   display: flex;
   align-items: center;
