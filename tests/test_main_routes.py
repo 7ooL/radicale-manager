@@ -311,7 +311,8 @@ class MainRoutesTest(unittest.TestCase):
         response = self.client.get("/system")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"System", response.data)
+        self.assertIn(b"Settings", response.data)
+        self.assertIn(b"Connections", response.data)
         self.assertIn(b"Routes Explorer", response.data)
         self.assertIn(b"Health JSON", response.data)
 

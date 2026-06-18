@@ -71,22 +71,18 @@ START_TIME = datetime.now(timezone.utc)
 
 # Navigation registry: central place to declare visible pages
 NAV_ITEMS = [
-    {"name": "Dashboard", "endpoint": "dashboard", "icon": "🏠", "group": "General", "quick": True},
-    {"name": "All Contacts", "endpoint": "global_contacts", "icon": "👥", "group": "General", "quick": True},
-    {"name": "Address Books", "endpoint": "address_books", "icon": "📚", "group": "General", "quick": False},
-    {"name": "Import", "endpoint": "import_vcf", "icon": "⬆️", "group": "General", "quick": False},
-    {"name": "Connections", "endpoint": "connections", "icon": "🔗", "group": "Administration", "quick": False},
-    {"name": "New Connection", "endpoint": "new_connection", "icon": "➕", "group": "Administration", "quick": False},
-    {"name": "System Menu", "endpoint": "system_menu", "icon": "⚙️", "group": "System", "quick": False},
-    {"name": "Routes Explorer", "endpoint": "system_routes", "icon": "🧭", "group": "System", "quick": False},
+    {"name": "Dashboard", "endpoint": "dashboard", "icon": "🏠", "quick": True},
+    {"name": "All Contacts", "endpoint": "global_contacts", "icon": "👥", "quick": True},
+    {"name": "Address Books", "endpoint": "address_books", "icon": "📚", "quick": False},
+    {"name": "Import", "endpoint": "import_vcf", "icon": "⬆️", "quick": False},
+    {"name": "Settings", "endpoint": "system_menu", "icon": "⚙️", "quick": False},
 ]
 
 NAV_TABS = [
     {"name": "Home", "endpoint": "dashboard", "icon": "🏠"},
     {"name": "Contacts", "endpoint": "global_contacts", "icon": "👥"},
     {"name": "Books", "endpoint": "address_books", "icon": "📚"},
-    {"name": "Connections", "endpoint": "connections", "icon": "🔗"},
-    {"name": "More", "endpoint": "system_menu", "icon": "⚙️"},
+    {"name": "Settings", "endpoint": "system_menu", "icon": "⚙️"},
 ]
 
 
@@ -125,67 +121,18 @@ def get_active_mobile_tab(endpoint):
         "profile_export_connection",
         "profile_backup_export",
     ):
-        return "connections"
+        return "system_menu"
     if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles"):
         return "system_menu"
     return "dashboard"
 
 def build_navigation(current_endpoint=None):
-    groups = {}
+    nav = []
     for item in NAV_ITEMS:
-        group = item.get("group", "Other")
         entry = dict(item)
-        entry["active"] = (item.get("endpoint") == current_endpoint)
+        entry["active"] = item.get("endpoint") == current_endpoint
         entry["url"] = url_for(item["endpoint"])
-        groups.setdefault(group, []).append(entry)
-
-    try:
-        active_profile_id = request.view_args.get("profile_id") if request.view_args else None
-        active_book_path = request.view_args.get("collection_path") if request.view_args else None
-        for profile in credential_store.get_enabled_profiles():
-            books = credential_store.get_cached_address_books(profile["id"]) or []
-            for book in books:
-                normalized = normalize_book_for_template(book)
-                groups.setdefault("General", []).append(
-                    {
-                        "name": normalized["display_name"],
-                        "meta": profile["name"],
-                        "icon": "📘",
-                        "url": url_for(
-                            "profile_view_contacts",
-                            profile_id=profile["id"],
-                            collection_path=normalized["path"],
-                        ),
-                        "active": (
-                            current_endpoint
-                            in (
-                                "profile_view_contacts",
-                                "profile_view_contact",
-                                "profile_new_contact",
-                                "profile_edit_contact",
-                                "profile_contact_quality",
-                                "profile_import_vcf",
-                                "profile_export_addressbook",
-                            )
-                            and active_profile_id == profile["id"]
-                            and active_book_path == normalized["path"]
-                        ),
-                    }
-                )
-    except Exception:
-        app.logger.debug("Unable to build address book navigation", exc_info=True)
-
-    group_order = ["General", "Administration", "System"]
-    nav = [
-        {"group": group, "entries": groups[group]}
-        for group in group_order
-        if group in groups
-    ]
-    nav.extend(
-        {"group": group, "entries": groups[group]}
-        for group in sorted(groups.keys())
-        if group not in group_order
-    )
+        nav.append(entry)
     return nav
 
 def build_breadcrumbs(endpoint, view_args):
@@ -1000,6 +947,11 @@ def system_menu():
     """Show advanced and debug tools that are hidden from primary mobile navigation."""
     system_links = [
         {
+            "name": "Connections",
+            "description": "Manage connection profiles, test connectivity, and refresh books.",
+            "endpoint": "connections",
+        },
+        {
             "name": "Routes Explorer",
             "description": "Browse all registered Flask endpoints and methods.",
             "endpoint": "system_routes",
@@ -1020,7 +972,7 @@ def system_menu():
             "endpoint": "debug_profiles",
         },
     ]
-    return render_template("system_menu.html", title="System", system_links=system_links)
+    return render_template("system_menu.html", title="Settings", system_links=system_links)
 
 
 @app.route("/system/routes")
