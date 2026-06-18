@@ -760,10 +760,27 @@ def connection_detail(profile_id):
         return redirect(url_for("connections"))
     books = credential_store.get_cached_address_books(profile_id) or []
     profile["books"] = [normalize_book_for_template(book) for book in books]
+    last_success = profile.get("last_successful_connect_at")
+    has_error = bool(profile.get("last_error"))
+    if has_error:
+        health_state = "error"
+        health_label = "Unhealthy"
+        health_icon = "🔴"
+    elif last_success:
+        health_state = "healthy"
+        health_label = "Healthy"
+        health_icon = "🟢"
+    else:
+        health_state = "warn"
+        health_label = "Not tested yet"
+        health_icon = "🟡"
     return render_template(
         "connections_detail.html",
         title=f"Connection - {profile.get('name')}",
         profile=profile,
+        health_state=health_state,
+        health_label=health_label,
+        health_icon=health_icon,
     )
 
 
@@ -1753,6 +1770,7 @@ def profile_view_contacts(profile_id, collection_path):
             "missing_name": sum(1 for contact in contacts if not (contact.get("full_name") or "").strip()),
             "last_modified": book.get("last_seen_at"),
         }
+        credential_store.update_connection_status(profile_id, True)
         update_cached_contact_count(profile_id, collection_path, len(contacts))
         bulk_destinations = build_contact_destinations(
             exclude_profile_id=profile_id,
@@ -1954,6 +1972,7 @@ def profile_contact_quality(profile_id, collection_path):
             except Exception as exc:
                 app.logger.warning("Skipping invalid contact during quality scan: %s", exc)
         report = build_duplicate_report(contacts)
+        credential_store.update_connection_status(profile_id, True)
         log_event(
             "quality_scan",
             profile_id=profile_id,
@@ -2100,6 +2119,7 @@ def profile_view_contact(profile_id, collection_path, contact_filename):
         contact["filename"] = contact_filename
         contact["etag"] = etag
         contact["href"] = contact_href
+        credential_store.update_connection_status(profile_id, True)
         destinations = build_contact_destinations(
             exclude_profile_id=profile_id,
             exclude_collection_path=collection_path,

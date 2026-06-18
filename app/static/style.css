@@ -188,6 +188,104 @@ textarea {
   gap: 0.45rem;
 }
 
+.connection-detail-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.connection-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.connection-health-badge.state-healthy {
+  color: #065f46;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.connection-health-badge.state-warn {
+  color: #92400e;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.connection-health-badge.state-error {
+  color: #991b1b;
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.connection-meta-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.meta-chip {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.meta-chip strong {
+  font-size: 0.8rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.meta-chip span {
+  overflow-wrap: anywhere;
+}
+
+.connection-actions-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  margin: 0.85rem 0;
+}
+
+.create-book-panel {
+  margin: 0.75rem 0 1rem;
+}
+
+.create-book-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  border-radius: 10px;
+  background: #eef2ff;
+  font-weight: 700;
+}
+
+.create-book-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.create-book-panel[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.danger-text {
+  color: #b91c1c !important;
+  font-weight: 700;
+}
+
 .profile-block {
   margin-top: 1.5rem;
 }
@@ -1201,6 +1299,14 @@ textarea {
   }
 
   .connection-card-actions {
+    justify-content: space-between;
+  }
+
+  .connection-detail-header {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-actions-row {
     justify-content: space-between;
   }
 
