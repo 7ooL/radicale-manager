@@ -68,7 +68,7 @@
                 <summary aria-label="Open address book actions">⋯</summary>
                 <div class="row-menu-panel">
                   <a href="{{ url_for('profile_import_vcf', profile_id=profile.id, collection_path=b.path) }}">Import</a>
-                  <button type="button" onclick="const f=document.getElementById('rename-{{ loop.index }}'); f.classList.toggle('hidden');">Rename</button>
+                  <button type="button" class="rename-trigger" data-target="rename-{{ loop.index }}">Rename</button>
                   <form method="post" action="{{ url_for('delete_addressbook', profile_id=profile.id, collection_path=b.path) }}" onsubmit="return confirm('Delete this address book and all contacts inside it?');">
                     <input type="hidden" name="next" value="{{ url_for('connection_detail', profile_id=profile.id) }}" />
                     <button type="submit" class="danger-text">Delete Book</button>
@@ -76,10 +76,11 @@
                 </div>
               </details>
             </div>
-            <form id="rename-{{ loop.index }}" class="inline-action-form hidden" method="post" action="{{ url_for('rename_addressbook', profile_id=profile.id, collection_path=b.path) }}">
+            <form id="rename-{{ loop.index }}" class="inline-action-form addressbook-rename-form hidden" method="post" action="{{ url_for('rename_addressbook', profile_id=profile.id, collection_path=b.path) }}">
               <input type="hidden" name="next" value="{{ url_for('connection_detail', profile_id=profile.id) }}" />
               <input type="text" name="display_name" value="{{ b.display_name }}" required />
               <button class="button small" type="submit">Rename</button>
+              <button class="button small secondary rename-cancel" type="button" data-target="rename-{{ loop.index }}">Cancel</button>
             </form>
           </li>
         {% endfor %}
@@ -88,4 +89,31 @@
       <p>No cached address books yet. Use Refresh Address Books or create one above.</p>
     {% endif %}
   </div>
+  <script>
+    (() => {
+      const showRenameForm = targetId => {
+        const form = document.getElementById(targetId);
+        if (!form) return;
+        form.classList.remove('hidden');
+        const input = form.querySelector('input[name="display_name"]');
+        if (input) input.focus();
+        const menu = form.closest('li')?.querySelector('.row-menu');
+        if (menu) menu.removeAttribute('open');
+      };
+
+      const hideRenameForm = targetId => {
+        const form = document.getElementById(targetId);
+        if (!form) return;
+        form.classList.add('hidden');
+      };
+
+      document.querySelectorAll('.rename-trigger').forEach(button => {
+        button.addEventListener('click', () => showRenameForm(button.dataset.target));
+      });
+
+      document.querySelectorAll('.rename-cancel').forEach(button => {
+        button.addEventListener('click', () => hideRenameForm(button.dataset.target));
+      });
+    })();
+  </script>
 {% endblock %}
