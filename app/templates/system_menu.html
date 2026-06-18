@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>System</h1>
+    <p class="muted">Advanced tools and debug pages are grouped here to keep the main UI clean on mobile.</p>
+    <div class="grid-list">
+      {% for item in system_links %}
+        <article class="book-card">
+          <h2>{{ item.name }}</h2>
+          <p class="muted compact">{{ item.description }}</p>
+          <a class="button" href="{{ url_for(item.endpoint) }}">Open</a>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock %}

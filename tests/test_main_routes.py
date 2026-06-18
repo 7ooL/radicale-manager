@@ -299,6 +299,22 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Second Contact", response.data)
         self.assertNotIn(b"Demo Contact", response.data)
 
+    def test_address_books_page_lists_cached_books(self):
+        response = self.client.get("/books")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Address Books", response.data)
+        self.assertIn(b"Source", response.data)
+        self.assertIn(b"Destination", response.data)
+
+    def test_system_menu_page_lists_advanced_links(self):
+        response = self.client.get("/system")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"System", response.data)
+        self.assertIn(b"Routes Explorer", response.data)
+        self.assertIn(b"Health JSON", response.data)
+
     def test_quality_scan_persists_summary_for_dashboard_rollup(self):
         quality_response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts/quality")
         self.assertEqual(quality_response.status_code, 200)

@@ -7,23 +7,16 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
-  <header class="page-header">
-    <div class="content-wrap">
-      <a class="logo" href="{{ url_for('login') }}">Radicale Manager</a>
-      <div class="header-right">
-        {% if global_status %}
-        <div class="global-status">
-          <span class="version">Radicale Manager {{ global_status.app_version }}</span>
-          <span>🟢 App Healthy</span>
-          <span>🔗 {{ global_status.profiles }} Connections</span>
-          <span>📚 {{ global_status.address_books }} Address Books</span>
-        </div>
-        {% endif %}
-        <div class="quick-actions">
-          {% for a in quick_actions %}
-            <a class="quick-action" href="{{ url_for(a.endpoint) }}">{{ a.icon }} {{ a.name }}</a>
-          {% endfor %}
-        </div>
+  <header class="app-header">
+    <div class="content-wrap app-header-inner">
+      <a class="logo" href="{{ url_for('dashboard') }}">Radicale Manager</a>
+      {% if global_status %}
+        <p class="header-status-line">App Healthy · {{ global_status.profiles }} connections · {{ global_status.address_books }} books</p>
+      {% endif %}
+      <div class="quick-actions">
+        {% for a in quick_actions %}
+          <a class="quick-action" href="{{ url_for(a.endpoint) }}">{{ a.icon }} {{ a.name }}</a>
+        {% endfor %}
       </div>
     </div>
   </header>
@@ -48,34 +41,49 @@
       {% endfor %}
     </aside>
 
-    <main class="content-wrap">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="alerts">
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
+    <main class="content-wrap app-main">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="alerts">
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% if breadcrumbs %}
+        {% if breadcrumbs|length > 1 %}
+          {% set back_target = breadcrumbs[-2] %}
+          <div class="mobile-back-link">
+            <a href="{{ back_target.url or url_for('dashboard') }}">&larr; {{ back_target.name }}</a>
+          </div>
+        {% endif %}
+        <nav class="breadcrumbs">
+          {% for c in breadcrumbs %}
+            {% if not loop.last and c.url %}
+              <a href="{{ c.url }}">{{ c.name }}</a> &rsaquo;
+            {% else %}
+              <span class="crumb-current">{{ c.name }}</span>
+            {% endif %}
           {% endfor %}
-        </div>
+        </nav>
       {% endif %}
-    {% endwith %}
 
-    {% if breadcrumbs %}
-      <nav class="breadcrumbs">
-        {% for c in breadcrumbs %}
-          {% if not loop.last and c.url %}
-            <a href="{{ c.url }}">{{ c.name }}</a> &rsaquo;
-          {% else %}
-            <span class="crumb-current">{{ c.name }}</span>
-          {% endif %}
-        {% endfor %}
-      </nav>
-    {% endif %}
-
-    {% block content %}{% endblock %}
-  </main>
+      {% block content %}{% endblock %}
+    </main>
   </div>
 
-  <footer class="footer">
+  <nav class="bottom-nav" aria-label="Primary">
+    {% for tab in nav_tabs %}
+      <a class="bottom-nav-link {% if tab.active %}active{% endif %}" href="{{ tab.url }}">
+        <span class="bottom-nav-icon">{{ tab.icon }}</span>
+        <span class="bottom-nav-label">{{ tab.name }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  <footer class="footer desktop-only">
     <div class="content-wrap">
       <p>Home lab Radicale contact manager prototype.</p>
     </div>

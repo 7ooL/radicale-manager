@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Address Books</h1>
+    <p class="muted">All cached books grouped by connection profile.</p>
+    {% if books %}
+      <div class="grid-list">
+        {% for book in books %}
+          <article class="book-card">
+            <h2>{{ book.display_name }}</h2>
+            <div class="book-meta">
+              <div class="meta-row">
+                <strong>Profile</strong>
+                <span>{{ book.profile_name }}</span>
+              </div>
+              <div class="meta-row">
+                <strong>Contacts</strong>
+                <span>{% if book.contact_count is not none %}{{ book.contact_count }}{% else %}unknown{% endif %}</span>
+              </div>
+              <div class="meta-row">
+                <strong>Updated</strong>
+                <span>{{ book.last_seen_at or "unknown" }}</span>
+              </div>
+            </div>
+            <div class="button-row">
+              <a class="button" href="{{ url_for('profile_view_contacts', profile_id=book.profile_id, collection_path=book.path) }}">Open</a>
+              <a class="button secondary" href="{{ url_for('profile_import_vcf', profile_id=book.profile_id, collection_path=book.path) }}">Import</a>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No cached books yet. Refresh address books from Connections.</p>
+    {% endif %}
+  </div>
+{% endblock %}

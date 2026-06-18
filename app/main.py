@@ -73,11 +73,62 @@ START_TIME = datetime.now(timezone.utc)
 NAV_ITEMS = [
     {"name": "Dashboard", "endpoint": "dashboard", "icon": "🏠", "group": "General", "quick": True},
     {"name": "All Contacts", "endpoint": "global_contacts", "icon": "👥", "group": "General", "quick": True},
+    {"name": "Address Books", "endpoint": "address_books", "icon": "📚", "group": "General", "quick": False},
     {"name": "Import", "endpoint": "import_vcf", "icon": "⬆️", "group": "General", "quick": False},
     {"name": "Connections", "endpoint": "connections", "icon": "🔗", "group": "Administration", "quick": False},
     {"name": "New Connection", "endpoint": "new_connection", "icon": "➕", "group": "Administration", "quick": False},
+    {"name": "System Menu", "endpoint": "system_menu", "icon": "⚙️", "group": "System", "quick": False},
     {"name": "Routes Explorer", "endpoint": "system_routes", "icon": "🧭", "group": "System", "quick": False},
 ]
+
+NAV_TABS = [
+    {"name": "Home", "endpoint": "dashboard", "icon": "🏠"},
+    {"name": "Contacts", "endpoint": "global_contacts", "icon": "👥"},
+    {"name": "Books", "endpoint": "address_books", "icon": "📚"},
+    {"name": "Connections", "endpoint": "connections", "icon": "🔗"},
+    {"name": "More", "endpoint": "system_menu", "icon": "⚙️"},
+]
+
+
+def get_active_mobile_tab(endpoint):
+    if endpoint in ("dashboard",):
+        return "dashboard"
+    if endpoint in (
+        "global_contacts",
+        "profile_view_contacts",
+        "profile_view_contact",
+        "profile_new_contact",
+        "profile_edit_contact",
+        "profile_contact_quality",
+        "profile_copy_contact",
+        "profile_move_contact",
+        "profile_duplicate_contact",
+        "profile_delete_contact",
+        "profile_bulk_contacts",
+        "global_bulk_contacts",
+    ):
+        return "global_contacts"
+    if endpoint in ("address_books", "profile_import_vcf", "profile_export_addressbook"):
+        return "address_books"
+    if endpoint in (
+        "connections",
+        "new_connection",
+        "edit_connection",
+        "delete_connection",
+        "test_connection",
+        "refresh_addressbooks",
+        "create_addressbook",
+        "rename_addressbook",
+        "delete_addressbook",
+        "export_connections",
+        "import_connections",
+        "profile_export_connection",
+        "profile_backup_export",
+    ):
+        return "connections"
+    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles"):
+        return "system_menu"
+    return "dashboard"
 
 def build_navigation(current_endpoint=None):
     groups = {}
@@ -210,11 +261,20 @@ def inject_navigation():
         "profiles": total_profiles,
         "address_books": total_books,
     }
+    active_tab = get_active_mobile_tab(current_endpoint)
+    nav_tabs = []
+    for tab in NAV_TABS:
+        entry = dict(tab)
+        entry["url"] = url_for(tab["endpoint"])
+        entry["active"] = tab["endpoint"] == active_tab
+        nav_tabs.append(entry)
     return {
         "navigation": navigation,
         "quick_actions": quick_actions,
         "breadcrumbs": breadcrumbs,
         "global_status": status,
+        "nav_tabs": nav_tabs,
+        "active_mobile_tab": active_tab,
     }
 
 
@@ -910,6 +970,57 @@ def edit_connection(profile_id):
             return render_template("connections_edit.html", form=form, profile_id=profile_id)
 
     return render_template("connections_edit.html", form=form, profile_id=profile_id)
+
+
+@app.route("/books")
+def address_books():
+    """Show a compact list of cached address books across enabled profiles."""
+    profiles = credential_store.get_enabled_profiles()
+    books = []
+    for profile in profiles:
+        cached = credential_store.get_cached_address_books(profile["id"]) or []
+        for book in cached:
+            normalized = normalize_book_for_template(book)
+            books.append(
+                {
+                    "profile_id": profile["id"],
+                    "profile_name": profile["name"],
+                    "display_name": normalized["display_name"],
+                    "path": normalized["path"],
+                    "contact_count": normalized.get("contact_count"),
+                    "last_seen_at": normalized.get("last_seen_at"),
+                }
+            )
+    books.sort(key=lambda item: (item["profile_name"].casefold(), item["display_name"].casefold()))
+    return render_template("address_books.html", title="Address Books", books=books)
+
+
+@app.route("/system")
+def system_menu():
+    """Show advanced and debug tools that are hidden from primary mobile navigation."""
+    system_links = [
+        {
+            "name": "Routes Explorer",
+            "description": "Browse all registered Flask endpoints and methods.",
+            "endpoint": "system_routes",
+        },
+        {
+            "name": "Health JSON",
+            "description": "Raw app health payload with uptime and dependency status.",
+            "endpoint": "health",
+        },
+        {
+            "name": "Readiness JSON",
+            "description": "Readiness probe payload used by deployments.",
+            "endpoint": "ready",
+        },
+        {
+            "name": "Debug Profiles",
+            "description": "Diagnostic profile export for local troubleshooting.",
+            "endpoint": "debug_profiles",
+        },
+    ]
+    return render_template("system_menu.html", title="System", system_links=system_links)
 
 
 @app.route("/system/routes")
