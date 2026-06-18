@@ -20,6 +20,14 @@
         <h2>Contacts With Missing Fields</h2>
         <p>{{ report.issues|length }}</p>
       </div>
+      <div class="summary-card">
+        <h2>Average Health Score</h2>
+        <p>{{ report.score.average }} / 100</p>
+      </div>
+      <div class="summary-card">
+        <h2>Low Health Contacts</h2>
+        <p>{{ report.score.low_health }}</p>
+      </div>
     </div>
 
     <section class="summary-card full-width">
@@ -34,6 +42,7 @@
                 {% for contact in group.contacts %}
                   <li>
                     <strong>{{ contact.display }}</strong>
+                    <span class="quality-score-chip tone-{{ contact.quality_tone }}">{{ contact.quality_score }} {{ contact.quality_label }}</span>
                     {% if contact.email %}<span>{{ contact.email }}</span>{% endif %}
                     {% if contact.phone %}<span>{{ contact.phone }}</span>{% endif %}
                   </li>
@@ -54,12 +63,31 @@
           {% for issue in report.issues %}
             <article class="quality-item">
               <h3>{{ issue.display }}</h3>
+              <p><span class="quality-score-chip tone-{{ issue.quality_tone }}">{{ issue.quality_score }} {{ issue.quality_label }}</span></p>
               <p>Missing {{ issue.missing|join(', ') }}</p>
             </article>
           {% endfor %}
         </div>
       {% else %}
         <p>No missing name, email, or phone issues found.</p>
+      {% endif %}
+    </section>
+
+    <section class="summary-card full-width">
+      <h2>Lowest Health Contacts</h2>
+      {% if report.score.lowest_contacts %}
+        <div class="quality-list">
+          {% for contact in report.score.lowest_contacts %}
+            <article class="quality-item">
+              <h3>{{ contact.display }}</h3>
+              <p><span class="quality-score-chip tone-{{ contact.quality_tone }}">{{ contact.quality_score }} {{ contact.quality_label }}</span></p>
+              {% if contact.email %}<p class="muted compact">{{ contact.email }}</p>{% endif %}
+              {% if contact.phone %}<p class="muted compact">{{ contact.phone }}</p>{% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No contacts available for scoring.</p>
       {% endif %}
     </section>
   </div>

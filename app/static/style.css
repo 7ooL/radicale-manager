@@ -988,6 +988,42 @@ textarea {
   margin: 0.35rem 0;
 }
 
+.quality-score-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.quality-score-chip.tone-excellent {
+  color: #065f46;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.quality-score-chip.tone-good {
+  color: #1e3a8a;
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.quality-score-chip.tone-fair {
+  color: #92400e;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.quality-score-chip.tone-risk {
+  color: #991b1b;
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
 .field-row {
   display: flex;
   gap: 0.75rem;

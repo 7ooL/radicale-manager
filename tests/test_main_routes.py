@@ -339,6 +339,8 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Global Quality Scan", response.data)
         self.assertIn(b"Possible Duplicates", response.data)
         self.assertIn(b"Missing Fields", response.data)
+        self.assertIn(b"Average Health Score", response.data)
+        self.assertIn(b"Low Health Contacts", response.data)
         self.assertIn(b"Demo / Source", response.data)
 
     def test_global_quality_scan_respects_profile_scope_filter(self):
@@ -407,6 +409,8 @@ class MainRoutesTest(unittest.TestCase):
     def test_quality_scan_persists_summary_for_dashboard_rollup(self):
         quality_response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts/quality")
         self.assertEqual(quality_response.status_code, 200)
+        self.assertIn(b"Average Health Score", quality_response.data)
+        self.assertIn(b"Lowest Health Contacts", quality_response.data)
 
         quality_events = self.store.get_recent_events(limit=10, actions=["quality_scan"])
         self.assertTrue(quality_events)

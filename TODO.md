@@ -108,7 +108,7 @@ Goal: become a contact quality and migration platform.
 - [x] Add analysis service that can scan cached or live contacts
 - [x] Global quality scan from All Contacts view
 - [x] Scope quality scan by selected connections and address books
-- [ ] Generate health score
+- [x] Generate health score
 - [x] Detect missing name
 - [x] Detect missing email
 - [x] Detect missing phone

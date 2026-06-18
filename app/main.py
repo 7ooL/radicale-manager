@@ -494,12 +494,61 @@ def normalize_phone_key(value):
     return re.sub(r"\D+", "", value or "")
 
 
+def assess_contact_health(contact):
+    missing = []
+    emails = contact.get("emails") or []
+    phones = contact.get("phones") or []
+    if not contact.get("full_name"):
+        missing.append("name")
+    if not emails:
+        missing.append("email")
+    if not phones:
+        missing.append("phone")
+
+    score = 100
+    if "name" in missing:
+        score -= 35
+    if "email" in missing:
+        score -= 25
+    if "phone" in missing:
+        score -= 25
+    if not emails and not phones:
+        score -= 10
+    score = max(0, min(100, score))
+
+    if score >= 90:
+        label = "Excellent"
+        tone = "excellent"
+    elif score >= 75:
+        label = "Good"
+        tone = "good"
+    elif score >= 55:
+        label = "Fair"
+        tone = "fair"
+    else:
+        label = "Risk"
+        tone = "risk"
+
+    return {
+        "score": score,
+        "label": label,
+        "tone": tone,
+        "missing": missing,
+    }
+
+
 def build_duplicate_report(contacts):
     checks = {"email": {}, "phone": {}, "name": {}}
     issues = []
+    score_sum = 0
+    score_count = 0
+    low_health_count = 0
+    score_buckets = {"excellent": 0, "good": 0, "fair": 0, "risk": 0}
+    scored_contacts = []
 
     for contact in contacts:
         display = contact.get("full_name") or contact.get("filename") or "Unnamed contact"
+        health = assess_contact_health(contact)
         entry = {
             "display": display,
             "filename": contact.get("filename"),
@@ -508,7 +557,16 @@ def build_duplicate_report(contacts):
             "profile_name": contact.get("profile_name"),
             "book_name": contact.get("book_name"),
             "book_path": contact.get("book_path"),
+            "quality_score": health["score"],
+            "quality_label": health["label"],
+            "quality_tone": health["tone"],
         }
+        score_sum += health["score"]
+        score_count += 1
+        score_buckets[health["tone"]] = score_buckets.get(health["tone"], 0) + 1
+        if health["score"] < 75:
+            low_health_count += 1
+        scored_contacts.append(entry)
         for email in contact.get("emails") or []:
             key = normalize_duplicate_key(email)
             if key:
@@ -521,13 +579,7 @@ def build_duplicate_report(contacts):
         if name_key:
             checks["name"].setdefault(name_key, []).append(entry)
 
-        missing = []
-        if not contact.get("full_name"):
-            missing.append("name")
-        if not contact.get("emails"):
-            missing.append("email")
-        if not contact.get("phones"):
-            missing.append("phone")
+        missing = health["missing"]
         if missing:
             issues.append({**entry, "missing": missing})
 
@@ -545,7 +597,22 @@ def build_duplicate_report(contacts):
                 )
 
     duplicate_groups.sort(key=lambda group: (-group["count"], group["type"], group["value"]))
-    return {"duplicates": duplicate_groups, "issues": issues}
+    scored_contacts.sort(key=lambda item: (item["quality_score"], item["display"].casefold()))
+    average_score = int(round(score_sum / score_count)) if score_count else 0
+    return {
+        "duplicates": duplicate_groups,
+        "issues": issues,
+        "score": {
+            "average": average_score,
+            "contacts_scored": score_count,
+            "low_health": low_health_count,
+            "excellent": score_buckets.get("excellent", 0),
+            "good": score_buckets.get("good", 0),
+            "fair": score_buckets.get("fair", 0),
+            "risk": score_buckets.get("risk", 0),
+            "lowest_contacts": scored_contacts[:8],
+        },
+    }
 
 
 def empty_contact_fields():
