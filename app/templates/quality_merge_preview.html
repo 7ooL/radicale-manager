@@ -38,23 +38,32 @@
             {% if source.fields.address %}<p class="muted compact">Address: {{ source.fields.address }}</p>{% endif %}
             {% if source.fields.organization %}<p class="muted compact">Org: {{ source.fields.organization }}</p>{% endif %}
             {% if source.fields.job_title %}<p class="muted compact">Title: {{ source.fields.job_title }}</p>{% endif %}
-            <details class="merge-all-fields">
-              <summary>All fields ({{ source.parsed.advanced_fields|length if source.parsed else 0 }})</summary>
-              <div class="merge-field-audit-table">
-                {% for field in source.parsed.advanced_fields if source.parsed %}
-                  <div class="merge-field-audit-row">
-                    <strong>{{ field.property }}</strong>
-                    <span>{{ field.display_value or "None" }}</span>
-                    {% if field.params %}<span class="muted compact">{{ field.params|tojson }}</span>{% endif %}
-                  </div>
-                {% else %}
-                  <p class="muted compact">No parsed fields available.</p>
-                {% endfor %}
-              </div>
-            </details>
           </article>
         {% endfor %}
       </div>
+      <details class="merge-all-fields" open>
+        <summary>All fields compare (A vs B)</summary>
+        <div class="merge-compare-table">
+          <div class="merge-compare-head">Field</div>
+          <div class="merge-compare-head">Contact A</div>
+          <div class="merge-compare-head">Contact B</div>
+          {% for row in compare_rows %}
+            <div class="merge-compare-label">{{ row.label }}</div>
+            <div class="merge-compare-cell">
+              <span>{{ row.left.value or "None" }}</span>
+              {% if row.left.type_label %}<small class="muted">TYPE: {{ row.left.type_label }}</small>{% endif %}
+              {% if row.left.params and not row.left.type_label %}<small class="muted">{{ row.left.params|tojson }}</small>{% endif %}
+            </div>
+            <div class="merge-compare-cell">
+              <span>{{ row.right.value or "None" }}</span>
+              {% if row.right.type_label %}<small class="muted">TYPE: {{ row.right.type_label }}</small>{% endif %}
+              {% if row.right.params and not row.right.type_label %}<small class="muted">{{ row.right.params|tojson }}</small>{% endif %}
+            </div>
+          {% else %}
+            <p class="muted compact">No comparable fields found.</p>
+          {% endfor %}
+        </div>
+      </details>
     </section>
 
     <form method="post" action="{{ url_for('quality_review_queue_merge_apply') }}" class="summary-card full-width merge-section-compact">
@@ -123,21 +132,31 @@
       <label>
         Emails
         <div class="merge-list-picker">
-          <div>
+          <div class="merge-method-col">
             <strong>Contact A</strong>
             <ul>
-              {% for email in source_a.fields.emails if source_a and source_a.fields.emails %}
-                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="emails" value="{{ email }}" checked /> {{ email }}</label></li>
+              {% for item in typed_email_options if item.source_index == 0 %}
+                <li>
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="merge-list-choice" data-target="emails" name="selected_email_method" value='{{ item.payload }}' checked />
+                    {{ item.value }}{% if item.type_label %} <span class="muted">({{ item.type_label }})</span>{% endif %}
+                  </label>
+                </li>
               {% else %}
                 <li class="muted compact">None</li>
               {% endfor %}
             </ul>
           </div>
-          <div>
+          <div class="merge-method-col">
             <strong>Contact B</strong>
             <ul>
-              {% for email in source_b.fields.emails if source_b and source_b.fields.emails %}
-                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="emails" value="{{ email }}" checked /> {{ email }}</label></li>
+              {% for item in typed_email_options if item.source_index == 1 %}
+                <li>
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="merge-list-choice" data-target="emails" name="selected_email_method" value='{{ item.payload }}' checked />
+                    {{ item.value }}{% if item.type_label %} <span class="muted">({{ item.type_label }})</span>{% endif %}
+                  </label>
+                </li>
               {% else %}
                 <li class="muted compact">None</li>
               {% endfor %}
@@ -149,21 +168,31 @@
       <label>
         Phones
         <div class="merge-list-picker">
-          <div>
+          <div class="merge-method-col">
             <strong>Contact A</strong>
             <ul>
-              {% for phone in source_a.fields.phones if source_a and source_a.fields.phones %}
-                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="phones" value="{{ phone }}" checked /> {{ phone }}</label></li>
+              {% for item in typed_phone_options if item.source_index == 0 %}
+                <li>
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="merge-list-choice" data-target="phones" name="selected_phone_method" value='{{ item.payload }}' checked />
+                    {{ item.value }}{% if item.type_label %} <span class="muted">({{ item.type_label }})</span>{% endif %}
+                  </label>
+                </li>
               {% else %}
                 <li class="muted compact">None</li>
               {% endfor %}
             </ul>
           </div>
-          <div>
+          <div class="merge-method-col">
             <strong>Contact B</strong>
             <ul>
-              {% for phone in source_b.fields.phones if source_b and source_b.fields.phones %}
-                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="phones" value="{{ phone }}" checked /> {{ phone }}</label></li>
+              {% for item in typed_phone_options if item.source_index == 1 %}
+                <li>
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="merge-list-choice" data-target="phones" name="selected_phone_method" value='{{ item.payload }}' checked />
+                    {{ item.value }}{% if item.type_label %} <span class="muted">({{ item.type_label }})</span>{% endif %}
+                  </label>
+                </li>
               {% else %}
                 <li class="muted compact">None</li>
               {% endfor %}
@@ -245,7 +274,16 @@
       const syncListTarget = (targetName) => {
         const selectedValues = Array.from(
           document.querySelectorAll(`.merge-list-choice[data-target="${targetName}"]:checked`)
-        ).map((el) => (el.value || "").trim()).filter(Boolean);
+        ).map((el) => {
+          const raw = (el.value || "").trim();
+          if (!raw) return "";
+          try {
+            const parsed = JSON.parse(raw);
+            return (parsed.value || "").trim();
+          } catch (_err) {
+            return raw;
+          }
+        }).filter(Boolean);
         const deduped = Array.from(new Set(selectedValues));
         const target = document.querySelector(`[name="${targetName}"]`);
         if (target) target.value = deduped.join("\n");

@@ -29,6 +29,7 @@ from contact_utils import (
     duplicate_vcard,
     get_contact_filename,
     merge_unknown_fields_into_vcard,
+    apply_typed_contact_methods_to_vcard,
 )
 from credential_store import CredentialStore, HAS_FERNET
 
@@ -1088,6 +1089,120 @@ def hydrate_queue_entry_contact_refs(entry):
     return refreshed_entries.get(entry.get("queue_key")) or entry
 
 
+def _normalize_method_types(values):
+    normalized = []
+    for value in values or []:
+        cleaned = (str(value or "").strip()).upper()
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def build_merge_compare_rows(source_details):
+    if len(source_details) < 2:
+        return []
+
+    by_source = []
+    for source in source_details[:2]:
+        grouped = {}
+        for field in (source.get("parsed", {}).get("advanced_fields") or []):
+            prop = (field.get("property") or "").upper()
+            value = (field.get("display_value") or "").strip()
+            params = field.get("params") or {}
+            type_values = _normalize_method_types(params.get("TYPE") or [])
+            grouped.setdefault(prop, []).append(
+                {
+                    "value": value,
+                    "params": params,
+                    "type_values": type_values,
+                    "type_label": ", ".join(type_values),
+                }
+            )
+        by_source.append(grouped)
+
+    all_props = sorted(set(by_source[0].keys()) | set(by_source[1].keys()))
+    rows = []
+    for prop in all_props:
+        left_values = by_source[0].get(prop) or []
+        right_values = by_source[1].get(prop) or []
+        count = max(len(left_values), len(right_values), 1)
+        for index in range(count):
+            left = left_values[index] if index < len(left_values) else {"value": "", "params": {}, "type_values": [], "type_label": ""}
+            right = right_values[index] if index < len(right_values) else {"value": "", "params": {}, "type_values": [], "type_label": ""}
+            left_has = bool(left.get("value") or left.get("params"))
+            right_has = bool(right.get("value") or right.get("params"))
+            if not left_has and not right_has:
+                continue
+            rows.append(
+                {
+                    "label": f"{prop} {index + 1}" if count > 1 else prop,
+                    "left": left,
+                    "right": right,
+                }
+            )
+    return rows
+
+
+def _build_typed_method_options(source_details, property_name):
+    options = []
+    for source_index, source in enumerate(source_details[:2]):
+        fields = source.get("parsed", {}).get("advanced_fields") or []
+        for field in fields:
+            if (field.get("property") or "").upper() != property_name.upper():
+                continue
+            value = (field.get("display_value") or "").strip()
+            if not value:
+                continue
+            params = field.get("params") or {}
+            type_values = _normalize_method_types(params.get("TYPE") or [])
+            options.append(
+                {
+                    "source_index": source_index,
+                    "value": value,
+                    "type_values": type_values,
+                    "type_label": ", ".join(type_values),
+                    "payload": json.dumps({"value": value, "types": type_values}),
+                }
+            )
+    return options
+
+
+def parse_selected_typed_methods(field_name):
+    selected = []
+    for raw in request.form.getlist(field_name):
+        text = (raw or "").strip()
+        if not text:
+            continue
+        try:
+            payload = json.loads(text)
+        except Exception:
+            continue
+        value = (payload.get("value") or "").strip() if isinstance(payload, dict) else ""
+        if not value:
+            continue
+        types = _normalize_method_types((payload.get("types") or []) if isinstance(payload, dict) else [])
+        selected.append({"value": value, "types": types})
+    return selected
+
+
+def collapse_typed_methods(methods):
+    collapsed = []
+    by_value = {}
+    for method in methods or []:
+        value = (method.get("value") or "").strip()
+        if not value:
+            continue
+        key = value.casefold()
+        type_values = _normalize_method_types(method.get("types") or [])
+        if key not in by_value:
+            by_value[key] = {"value": value, "types": []}
+            collapsed.append(by_value[key])
+        for type_value in type_values:
+            if type_value not in by_value[key]["types"]:
+                by_value[key]["types"].append(type_value)
+    return collapsed
+
+
 @app.route("/quality/duplicate-action", methods=["POST"])
 def quality_duplicate_action():
     action = (request.form.get("action") or "").strip()
@@ -1292,6 +1407,9 @@ def quality_review_queue_merge_preview():
             }
         ),
     }
+    compare_rows = build_merge_compare_rows(source_details)
+    typed_email_options = _build_typed_method_options(source_details, "EMAIL")
+    typed_phone_options = _build_typed_method_options(source_details, "TEL")
     default_destination = f"{source_details[0]['ref']['profile_id']}::{source_details[0]['ref']['book_path']}"
     destinations = build_contact_destinations()
     return render_template(
@@ -1301,6 +1419,9 @@ def quality_review_queue_merge_preview():
         source_details=source_details,
         destinations=destinations,
         merged_defaults=merged_defaults,
+        compare_rows=compare_rows,
+        typed_email_options=typed_email_options,
+        typed_phone_options=typed_phone_options,
         default_destination=default_destination,
     )
 
@@ -1360,6 +1481,12 @@ def quality_review_queue_merge_apply():
         "categories": [],
         "uid": str(uuid.uuid4()),
     }
+    typed_emails = collapse_typed_methods(parse_selected_typed_methods("selected_email_method"))
+    typed_phones = collapse_typed_methods(parse_selected_typed_methods("selected_phone_method"))
+    if typed_emails:
+        merged_fields["emails"] = [entry["value"] for entry in typed_emails]
+    if typed_phones:
+        merged_fields["phones"] = [entry["value"] for entry in typed_phones]
     if not merged_fields["full_name"]:
         flash("Merged contact needs a full name.", "error")
         return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
@@ -1375,6 +1502,11 @@ def quality_review_queue_merge_apply():
         merged_vcard = build_vcard_from_fields(merged_fields)
         for source_vcard in source_vcards:
             merged_vcard = merge_unknown_fields_into_vcard(source_vcard, merged_vcard)
+        merged_vcard = apply_typed_contact_methods_to_vcard(
+            merged_vcard,
+            typed_emails=typed_emails,
+            typed_phones=typed_phones,
+        )
 
         dest_client = get_client_for_profile(dest_profile_id)
         merged_filename = f"{merged_fields['uid']}.vcf"

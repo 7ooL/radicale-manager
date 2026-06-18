@@ -713,6 +713,8 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Apply Mitigation", response.data)
         self.assertIn(b"Use Contact A Values", response.data)
         self.assertIn(b"Use Contact B Values", response.data)
+        self.assertIn(b"All fields compare (A vs B)", response.data)
+        self.assertIn(b"selected_email_method", response.data)
 
     def test_quality_merge_apply_creates_merged_contact_and_marks_mitigated(self):
         queue_key = "global|||Name Similarity|Demo Contact ~ Second Contact|recommend_merge"

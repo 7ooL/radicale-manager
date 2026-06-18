@@ -588,6 +588,55 @@ def merge_unknown_fields_into_vcard(original_vcard, rebuilt_vcard):
     return "\n".join(merged) + "\n"
 
 
+def apply_typed_contact_methods_to_vcard(vcard_text, typed_emails=None, typed_phones=None):
+    """Replace EMAIL/TEL fields with typed values, preserving TYPE params when provided."""
+    typed_emails = typed_emails or []
+    typed_phones = typed_phones or []
+    if not typed_emails and not typed_phones:
+        return vcard_text
+    try:
+        card = vobject.readOne(vcard_text)
+    except Exception as exc:
+        LOGGER.warning("Unable to parse vCard for typed method merge: %s", exc)
+        return vcard_text
+
+    if hasattr(card, "contents"):
+        card.contents.pop("email", None)
+        card.contents.pop("tel", None)
+    for attr_name in ("email", "tel"):
+        if hasattr(card, attr_name):
+            try:
+                delattr(card, attr_name)
+            except Exception:
+                pass
+
+    for item in typed_emails:
+        value = str(item.get("value") or "").strip()
+        if not value:
+            continue
+        email_prop = card.add("email")
+        email_prop.value = value
+        type_values = [str(v).strip().upper() for v in (item.get("types") or []) if str(v).strip()]
+        if type_values:
+            email_prop.params["TYPE"] = type_values
+        else:
+            email_prop.type_param = "INTERNET"
+
+    for item in typed_phones:
+        value = str(item.get("value") or "").strip()
+        if not value:
+            continue
+        phone_prop = card.add("tel")
+        phone_prop.value = value
+        type_values = [str(v).strip().upper() for v in (item.get("types") or []) if str(v).strip()]
+        if type_values:
+            phone_prop.params["TYPE"] = type_values
+        else:
+            phone_prop.type_param = "VOICE"
+
+    return card.serialize()
+
+
 def duplicate_vcard(vcard_text):
     """Return a copied vCard with a new UID and a display name marked as a copy."""
     card = vobject.readOne(vcard_text)

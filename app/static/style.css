@@ -507,13 +507,28 @@ textarea {
   color: #334155;
 }
 
-.merge-field-audit-table {
+.merge-compare-table {
   margin-top: 0.35rem;
   display: grid;
-  gap: 0.35rem;
+  grid-template-columns: minmax(6rem, 8rem) minmax(10rem, 1fr) minmax(10rem, 1fr);
+  gap: 0.3rem;
 }
 
-.merge-field-audit-row {
+.merge-compare-head {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.merge-compare-label {
+  font-weight: 700;
+  color: #0f172a;
+  padding: 0.35rem 0.1rem;
+}
+
+.merge-compare-cell {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
@@ -587,6 +602,11 @@ textarea {
 
 .merge-list-picker li {
   margin: 0.2rem 0;
+}
+
+.merge-method-col ul {
+  max-height: 12rem;
+  overflow: auto;
 }
 
 .queue-merge-grid {
@@ -1644,6 +1664,19 @@ textarea {
   .merge-field-label {
     padding-top: 0.3rem;
     border-top: 1px dashed #cbd5e1;
+  }
+
+  .merge-compare-table {
+    grid-template-columns: 1fr;
+  }
+
+  .merge-compare-head {
+    display: none;
+  }
+
+  .merge-compare-label {
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 0.45rem;
   }
 
   .filter-label {
