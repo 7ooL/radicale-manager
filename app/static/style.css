@@ -1114,6 +1114,32 @@ textarea {
     width: 100%;
   }
 
+  .detail-primary-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+    overflow: visible;
+  }
+
+  .detail-primary-actions > .button {
+    width: 100%;
+  }
+
+  .detail-primary-actions .row-menu {
+    justify-self: end;
+    overflow: visible;
+  }
+
+  .detail-primary-actions .row-menu summary {
+    white-space: nowrap;
+  }
+
+  .detail-primary-actions .row-menu-panel {
+    right: 0;
+    left: auto;
+  }
+
   .raw-view,
   .code-block {
     max-width: 100%;
