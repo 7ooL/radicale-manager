@@ -342,6 +342,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Warnings & Recommendations", response.data)
         self.assertIn(b"Average Health Score", response.data)
         self.assertIn(b"Low Health Contacts", response.data)
+        self.assertIn(b"Match score", response.data)
         self.assertIn(b"Demo / Source", response.data)
 
     def test_global_quality_scan_respects_profile_scope_filter(self):
@@ -385,6 +386,56 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Deprecated fields", response.data)
         self.assertIn(b"LABEL", response.data)
         self.assertIn(b"Recommendation:", response.data)
+
+    def test_global_quality_scan_detects_similar_name_duplicates_with_confidence(self):
+        FakeRadicaleClient.contacts["demo/source/contact-sim-1.vcf"] = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-sim-1\n"
+            "FN:Alex Rivera\n"
+            "N:Rivera;Alex;;;\n"
+            "EMAIL:alex1@example.test\n"
+            "TEL:555-0101\n"
+            "END:VCARD\n"
+        )
+        FakeRadicaleClient.contacts["demo/source/contact-sim-2.vcf"] = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-sim-2\n"
+            "FN:Alec Rivera\n"
+            "N:Rivera;Alec;;;\n"
+            "EMAIL:alec2@example.test\n"
+            "TEL:555-0102\n"
+            "END:VCARD\n"
+        )
+
+        response = self.client.get("/contacts/quality")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Name Similarity match: Alex Rivera ~ Alec Rivera", response.data)
+        self.assertIn(b"Confidence", response.data)
+
+    def test_quality_duplicate_action_queues_event_non_destructively(self):
+        response = self.client.post(
+            "/quality/duplicate-action",
+            data={
+                "action": "review",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "scope": "global",
+                "next": "/contacts/quality",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith("/contacts/quality"))
+        action_events = self.store.get_recent_events(limit=5, actions=["quality_action"])
+        self.assertTrue(action_events)
+        latest = action_events[0]
+        self.assertEqual(latest["details"].get("action"), "review")
+        self.assertEqual(latest["details"].get("duplicate_type"), "Email")
 
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(

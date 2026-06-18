@@ -988,6 +988,14 @@ textarea {
   margin: 0.35rem 0;
 }
 
+.quality-item .inline-action-form {
+  margin: 0.5rem 0 0.25rem;
+}
+
+.quality-item .inline-action-form label {
+  margin-bottom: 0;
+}
+
 .quality-score-chip {
   display: inline-flex;
   align-items: center;

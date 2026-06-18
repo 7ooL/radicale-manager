@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import zipfile
+from difflib import SequenceMatcher
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
 import re
@@ -141,6 +142,13 @@ EVENT_ACTION_LABELS = {
     "connection_export": "Exported connection",
     "backup_export": "Exported backup ZIP",
     "quality_scan": "Scanned contact quality",
+    "quality_action": "Queued quality action",
+}
+
+QUALITY_DUPLICATE_ACTIONS = {
+    "ignore": "Ignore",
+    "review": "Mark for review",
+    "recommend_merge": "Recommend merge",
 }
 
 
@@ -643,6 +651,7 @@ def build_duplicate_report(contacts):
     score_buckets = {"excellent": 0, "good": 0, "fair": 0, "risk": 0}
     scored_contacts = []
 
+    similar_name_candidates = []
     for contact in contacts:
         display = contact.get("full_name") or contact.get("filename") or "Unnamed contact"
         analysis = analyze_contact_quality_warnings(contact)
@@ -681,6 +690,7 @@ def build_duplicate_report(contacts):
         name_key = normalize_duplicate_key(contact.get("full_name"))
         if name_key:
             checks["name"].setdefault(name_key, []).append(entry)
+            similar_name_candidates.append({"name_key": name_key, "entry": entry})
 
         missing = health["missing"]
         if missing:
@@ -692,6 +702,22 @@ def build_duplicate_report(contacts):
             warnings.append({**entry, **warning})
 
     duplicate_groups = []
+
+    def confidence_from_score(score):
+        if score >= 90:
+            return "High"
+        if score >= 80:
+            return "Medium"
+        return "Low"
+
+    def score_for_match_type(match_type, default_score=100):
+        if match_type == "Name":
+            return 92
+        if match_type == "Phone":
+            return 97
+        if match_type == "Email":
+            return 100
+        return default_score
     for match_type, values in checks.items():
         for value, matches in values.items():
             if len(matches) > 1:
@@ -701,10 +727,45 @@ def build_duplicate_report(contacts):
                         "value": value,
                         "count": len(matches),
                         "contacts": matches,
+                        "match_score": score_for_match_type(match_type.title()),
+                        "confidence": confidence_from_score(score_for_match_type(match_type.title())),
                     }
                 )
 
-    duplicate_groups.sort(key=lambda group: (-group["count"], group["type"], group["value"]))
+    # Add similar-name candidate groups (non-exact) using fuzzy ratio.
+    seen_pairs = set()
+    for index, left in enumerate(similar_name_candidates):
+        for right in similar_name_candidates[index + 1 :]:
+            left_key = left["name_key"]
+            right_key = right["name_key"]
+            if not left_key or not right_key or left_key == right_key:
+                continue
+            if len(left_key) < 4 or len(right_key) < 4:
+                continue
+            pair_key = tuple(sorted((left_key, right_key)))
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+            similarity = SequenceMatcher(None, left_key, right_key).ratio()
+            if similarity < 0.84:
+                continue
+            score = int(round(similarity * 100))
+            duplicate_groups.append(
+                {
+                    "type": "Name Similarity",
+                    "value": f"{left['entry']['display']} ~ {right['entry']['display']}",
+                    "count": 2,
+                    "contacts": [left["entry"], right["entry"]],
+                    "match_score": score,
+                    "confidence": confidence_from_score(score),
+                }
+            )
+
+    duplicate_groups.sort(key=lambda group: (-group.get("match_score", 0), -group["count"], group["type"], group["value"]))
+    for idx, group in enumerate(duplicate_groups, start=1):
+        safe_type = re.sub(r"[^a-z0-9]+", "-", group.get("type", "").casefold()).strip("-")
+        safe_value = re.sub(r"[^a-z0-9]+", "-", str(group.get("value", "")).casefold()).strip("-")
+        group["group_id"] = f"{safe_type or 'group'}-{safe_value[:36] or 'value'}-{idx}"
     scored_contacts.sort(key=lambda item: (item["quality_score"], item["display"].casefold()))
     average_score = int(round(score_sum / score_count)) if score_count else 0
     return {
@@ -723,6 +784,50 @@ def build_duplicate_report(contacts):
             "lowest_contacts": scored_contacts[:8],
         },
     }
+
+
+@app.route("/quality/duplicate-action", methods=["POST"])
+def quality_duplicate_action():
+    action = (request.form.get("action") or "").strip()
+    if action not in QUALITY_DUPLICATE_ACTIONS:
+        flash("Select a valid duplicate action.", "error")
+        return redirect_back_or("global_contact_quality")
+
+    duplicate_type = (request.form.get("duplicate_type") or "").strip()
+    duplicate_value = (request.form.get("duplicate_value") or "").strip()
+    confidence = (request.form.get("confidence") or "").strip()
+    score_raw = (request.form.get("match_score") or "").strip()
+    scope = (request.form.get("scope") or "global").strip()
+    profile_id_raw = (request.form.get("profile_id") or "").strip()
+    collection_path = (request.form.get("collection_path") or "").strip()
+    profile_id = None
+    if profile_id_raw:
+        try:
+            profile_id = int(profile_id_raw)
+        except Exception:
+            profile_id = None
+
+    log_event(
+        "quality_action",
+        profile_id=profile_id,
+        collection_path=collection_path or None,
+        details={
+            "action": action,
+            "label": QUALITY_DUPLICATE_ACTIONS[action],
+            "scope": scope,
+            "duplicate_type": duplicate_type,
+            "duplicate_value": duplicate_value,
+            "match_score": score_raw,
+            "confidence": confidence,
+        },
+    )
+    flash(
+        f"{QUALITY_DUPLICATE_ACTIONS[action]} queued for {duplicate_type or 'duplicate'} group (non-destructive).",
+        "success",
+    )
+    if profile_id and collection_path:
+        return redirect_back_or("profile_contact_quality", profile_id=profile_id, collection_path=collection_path)
+    return redirect_back_or("global_contact_quality")
 
 
 def empty_contact_fields():
@@ -1913,6 +2018,8 @@ def global_contact_quality():
             "profile_ids": [str(profile_id) for profile_id in sorted(selected_profile_ids)],
             "book_keys": list(selected_book_keys_set),
         },
+        quality_actions=QUALITY_DUPLICATE_ACTIONS,
+        quality_return_to=request.full_path.rstrip("?"),
     )
 
 
@@ -2431,6 +2538,8 @@ def profile_contact_quality(profile_id, collection_path):
             profile_id=profile_id,
             contacts=contacts,
             report=report,
+            quality_actions=QUALITY_DUPLICATE_ACTIONS,
+            quality_return_to=request.full_path.rstrip("?"),
         )
     except Exception as exc:
         app.logger.exception("Unable to scan contacts for profile %s book %s", profile_id, collection_path)

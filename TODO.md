@@ -124,12 +124,12 @@ Goal: become a contact quality and migration platform.
 - [x] Detect possible duplicates by email
 - [x] Detect possible duplicates by phone
 - [x] Detect possible duplicates by exact name
-- [ ] Detect possible duplicates by similar name
-- [ ] Assign match score
+- [x] Detect possible duplicates by similar name
+- [x] Assign match score
 - [x] Show duplicate review page
-- [ ] Support ignore
-- [ ] Support manual review
-- [ ] Support merge recommendation
+- [x] Support ignore (non-destructive queue)
+- [x] Support manual review (non-destructive queue)
+- [x] Support merge recommendation (non-destructive queue)
 - [ ] Support approved merge
 
 ### Contact Normalization

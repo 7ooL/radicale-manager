@@ -41,7 +41,27 @@
           {% for group in report.duplicates %}
             <article class="quality-item">
               <h3>{{ group.type }} match: {{ group.value }}</h3>
-              <p class="muted">{{ group.count }} contacts</p>
+              <p class="muted">{{ group.count }} contacts · Match score {{ group.match_score }} · Confidence {{ group.confidence }}</p>
+              <form method="post" action="{{ url_for('quality_duplicate_action') }}" class="inline-action-form">
+                <input type="hidden" name="next" value="{{ quality_return_to }}" />
+                <input type="hidden" name="scope" value="book" />
+                <input type="hidden" name="profile_id" value="{{ profile_id }}" />
+                <input type="hidden" name="collection_path" value="{{ book.path }}" />
+                <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
+                <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
+                <input type="hidden" name="match_score" value="{{ group.match_score }}" />
+                <input type="hidden" name="confidence" value="{{ group.confidence }}" />
+                <label>
+                  Quick action
+                  <select name="action" required>
+                    <option value="">Choose action</option>
+                    {% for action_key, action_label in quality_actions.items() %}
+                      <option value="{{ action_key }}">{{ action_label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <button class="button small secondary" type="submit">Queue</button>
+              </form>
               <ul>
                 {% for contact in group.contacts %}
                   <li>
