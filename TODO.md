@@ -31,6 +31,10 @@ Goal: turn the app from a CardDAV browser into a complete contact management pla
 - [x] Profile export/import
 - [x] Connection grouping
 - [x] Connection tags
+- [ ] Credential hardening follow-up:
+  - detect and flag undecryptable stored profile credentials in Settings
+  - reduce repeated decrypt warning log spam
+  - add explicit re-save credentials workflow for affected profiles
 
 ### Address Book Management
 
