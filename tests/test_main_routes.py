@@ -579,7 +579,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Contact A", response.data)
         self.assertIn(b"Contact B", response.data)
-        self.assertIn(b"Suggested Merge Result", response.data)
+        self.assertIn(b"Suggested Result:", response.data)
         self.assertIn(b"Overall Match Score", response.data)
         self.assertIn(b"Preview and Apply Mitigation", response.data)
 

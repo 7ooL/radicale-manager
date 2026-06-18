@@ -35,8 +35,23 @@
             <p class="muted compact">{{ source.ref.profile_name }} / {{ source.ref.book_name }}</p>
             {% if source.fields.emails %}<p class="muted compact">Emails: {{ source.fields.emails|join(', ') }}</p>{% endif %}
             {% if source.fields.phones %}<p class="muted compact">Phones: {{ source.fields.phones|join(', ') }}</p>{% endif %}
+            {% if source.fields.address %}<p class="muted compact">Address: {{ source.fields.address }}</p>{% endif %}
             {% if source.fields.organization %}<p class="muted compact">Org: {{ source.fields.organization }}</p>{% endif %}
             {% if source.fields.job_title %}<p class="muted compact">Title: {{ source.fields.job_title }}</p>{% endif %}
+            <details class="merge-all-fields">
+              <summary>All fields ({{ source.parsed.advanced_fields|length if source.parsed else 0 }})</summary>
+              <div class="merge-field-audit-table">
+                {% for field in source.parsed.advanced_fields if source.parsed %}
+                  <div class="merge-field-audit-row">
+                    <strong>{{ field.property }}</strong>
+                    <span>{{ field.display_value or "None" }}</span>
+                    {% if field.params %}<span class="muted compact">{{ field.params|tojson }}</span>{% endif %}
+                  </div>
+                {% else %}
+                  <p class="muted compact">No parsed fields available.</p>
+                {% endfor %}
+              </div>
+            </details>
           </article>
         {% endfor %}
       </div>
@@ -85,6 +100,24 @@
           {{ source_b.fields.job_title if source_b and source_b.fields.job_title else "None" }}
         </button>
         <input type="text" name="job_title" value="{{ merged_defaults.job_title }}" />
+
+        <div class="merge-field-label">Birthday</div>
+        <button class="merge-value-button" type="button" data-source="a" data-field="birthday">
+          {{ source_a.fields.birthday if source_a and source_a.fields.birthday else "None" }}
+        </button>
+        <button class="merge-value-button" type="button" data-source="b" data-field="birthday">
+          {{ source_b.fields.birthday if source_b and source_b.fields.birthday else "None" }}
+        </button>
+        <input type="text" name="birthday" value="{{ merged_defaults.birthday }}" />
+
+        <div class="merge-field-label">Address</div>
+        <button class="merge-value-button" type="button" data-source="a" data-field="address">
+          {{ source_a.fields.address if source_a and source_a.fields.address else "None" }}
+        </button>
+        <button class="merge-value-button" type="button" data-source="b" data-field="address">
+          {{ source_b.fields.address if source_b and source_b.fields.address else "None" }}
+        </button>
+        <input type="text" name="address" value="{{ merged_defaults.address }}" />
       </div>
 
       <label>
@@ -172,12 +205,16 @@
           full_name: {{ (source_a.fields.full_name if source_a else "")|tojson }},
           organization: {{ (source_a.fields.organization if source_a else "")|tojson }},
           job_title: {{ (source_a.fields.job_title if source_a else "")|tojson }},
+          birthday: {{ (source_a.fields.birthday if source_a else "")|tojson }},
+          address: {{ (source_a.fields.address if source_a else "")|tojson }},
           note: {{ (source_a.fields.note if source_a else "")|tojson }},
         },
         b: {
           full_name: {{ (source_b.fields.full_name if source_b else "")|tojson }},
           organization: {{ (source_b.fields.organization if source_b else "")|tojson }},
           job_title: {{ (source_b.fields.job_title if source_b else "")|tojson }},
+          birthday: {{ (source_b.fields.birthday if source_b else "")|tojson }},
+          address: {{ (source_b.fields.address if source_b else "")|tojson }},
           note: {{ (source_b.fields.note if source_b else "")|tojson }},
         },
       };
@@ -201,7 +238,7 @@
         button.addEventListener("click", () => {
           const sourceKey = button.getAttribute("data-source");
           if (!sourceKey) return;
-          ["full_name", "organization", "job_title", "note"].forEach((field) => applyScalar(sourceKey, field));
+          ["full_name", "organization", "job_title", "birthday", "address", "note"].forEach((field) => applyScalar(sourceKey, field));
         });
       });
 

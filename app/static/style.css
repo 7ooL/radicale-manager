@@ -399,9 +399,9 @@ textarea {
   border: 1px solid #dbe3ee;
   border-radius: 12px;
   background: #fff;
-  padding: 0.8rem;
+  padding: 0.65rem 0.7rem;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .event-title-row {
@@ -497,6 +497,31 @@ textarea {
   color: #1e3a8a;
 }
 
+.merge-all-fields {
+  margin-top: 0.2rem;
+}
+
+.merge-all-fields summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #334155;
+}
+
+.merge-field-audit-table {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.merge-field-audit-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 0.35rem 0.45rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
 .merge-pick-all {
   display: flex;
   gap: 0.45rem;
@@ -562,6 +587,37 @@ textarea {
 
 .merge-list-picker li {
   margin: 0.2rem 0;
+}
+
+.queue-merge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.45rem;
+  margin: 0.25rem 0 0.2rem;
+}
+
+.queue-source-card {
+  padding: 0.5rem 0.6rem;
+}
+
+.queue-source-card p {
+  margin: 0.15rem 0;
+}
+
+.queue-merge-result {
+  border: 1px solid #dbeafe;
+  border-radius: 9px;
+  background: #eff6ff;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  margin-bottom: 0.15rem;
+}
+
+@media (min-width: 768px) {
+  .merge-list-picker {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .stage-help {

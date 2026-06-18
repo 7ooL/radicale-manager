@@ -81,8 +81,8 @@
 
         {% if entry.action == 'recommend_merge' %}
           {% if not is_closed and entry.duplicate_contacts|length >= 2 %}
-            <div class="merge-preview-grid">
-              <article class="summary-card merge-card">
+            <div class="queue-merge-grid">
+              <article class="merge-source-card queue-source-card">
                 <h3>Contact A</h3>
                 <p><strong>{{ entry.duplicate_contacts[0].display or 'Unknown contact' }}</strong></p>
                 {% if entry.duplicate_contacts[0].profile_name or entry.duplicate_contacts[0].book_name %}
@@ -91,7 +91,7 @@
                 {% if entry.duplicate_contacts[0].email %}<p class="muted compact">{{ entry.duplicate_contacts[0].email }}</p>{% endif %}
                 {% if entry.duplicate_contacts[0].phone %}<p class="muted compact">{{ entry.duplicate_contacts[0].phone }}</p>{% endif %}
               </article>
-              <article class="summary-card merge-card">
+              <article class="merge-source-card queue-source-card">
                 <h3>Contact B</h3>
                 <p><strong>{{ entry.duplicate_contacts[1].display or 'Unknown contact' }}</strong></p>
                 {% if entry.duplicate_contacts[1].profile_name or entry.duplicate_contacts[1].book_name %}
@@ -100,12 +100,11 @@
                 {% if entry.duplicate_contacts[1].email %}<p class="muted compact">{{ entry.duplicate_contacts[1].email }}</p>{% endif %}
                 {% if entry.duplicate_contacts[1].phone %}<p class="muted compact">{{ entry.duplicate_contacts[1].phone }}</p>{% endif %}
               </article>
-              <article class="summary-card merge-card merge-result">
-                <h3>Suggested Merge Result</h3>
-                <p><strong>{{ entry.merged_preview.display or 'Merged contact' }}</strong></p>
-                {% if entry.merged_preview.emails %}<p class="muted compact">Emails: {{ entry.merged_preview.emails|join(', ') }}</p>{% endif %}
-                {% if entry.merged_preview.phones %}<p class="muted compact">Phones: {{ entry.merged_preview.phones|join(', ') }}</p>{% endif %}
-              </article>
+            </div>
+            <div class="queue-merge-result">
+              <strong>Suggested Result:</strong> {{ entry.merged_preview.display or "Merged contact" }}
+              {% if entry.merged_preview.emails %}<span class="muted"> · {{ entry.merged_preview.emails|join(', ') }}</span>{% endif %}
+              {% if entry.merged_preview.phones %}<span class="muted"> · {{ entry.merged_preview.phones|join(', ') }}</span>{% endif %}
             </div>
           {% endif %}
           {% if is_closed %}

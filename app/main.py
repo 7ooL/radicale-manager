@@ -1253,10 +1253,12 @@ def quality_review_queue_merge_preview():
             client = get_client_for_profile(profile_id)
             vcard_text, _etag = client.get_contact(f"{item['book_path'].rstrip('/')}/{item['filename']}")
             fields = vcard_to_dict(vcard_text)
+            parsed = parse_vcard_contact(vcard_text)
             source_details.append(
                 {
                     "ref": item,
                     "fields": fields,
+                    "parsed": parsed,
                     "raw_vcard": vcard_text,
                 }
             )
@@ -1270,6 +1272,8 @@ def quality_review_queue_merge_preview():
         "full_name": source_details[0]["fields"].get("full_name") or source_details[1]["fields"].get("full_name") or "",
         "organization": source_details[0]["fields"].get("organization") or source_details[1]["fields"].get("organization") or "",
         "job_title": source_details[0]["fields"].get("job_title") or source_details[1]["fields"].get("job_title") or "",
+        "birthday": source_details[0]["fields"].get("birthday") or source_details[1]["fields"].get("birthday") or "",
+        "address": source_details[0]["fields"].get("address") or source_details[1]["fields"].get("address") or "",
         "note": source_details[0]["fields"].get("note") or source_details[1]["fields"].get("note") or "",
         "emails": sorted(
             {
@@ -1347,8 +1351,8 @@ def quality_review_queue_merge_apply():
         "nickname": "",
         "organization": (request.form.get("organization") or "").strip(),
         "job_title": (request.form.get("job_title") or "").strip(),
-        "birthday": "",
-        "address": "",
+        "birthday": (request.form.get("birthday") or "").strip(),
+        "address": (request.form.get("address") or "").strip(),
         "note": (request.form.get("note") or "").strip(),
         "emails": parse_multivalue_form("emails"),
         "phones": parse_multivalue_form("phones"),
