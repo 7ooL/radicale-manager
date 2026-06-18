@@ -79,36 +79,42 @@
         </div>
         {% if entry.duplicate_value %}<p class="muted compact">{{ entry.duplicate_value }}</p>{% endif %}
 
-        {% if entry.action == 'recommend_merge' and entry.duplicate_contacts|length >= 2 %}
-          <div class="merge-preview-grid">
-            <article class="summary-card merge-card">
-              <h3>Contact A</h3>
-              <p><strong>{{ entry.duplicate_contacts[0].display or 'Unknown contact' }}</strong></p>
-              {% if entry.duplicate_contacts[0].profile_name or entry.duplicate_contacts[0].book_name %}
-                <p class="muted compact">{{ entry.duplicate_contacts[0].profile_name }} / {{ entry.duplicate_contacts[0].book_name }}</p>
-              {% endif %}
-              {% if entry.duplicate_contacts[0].email %}<p class="muted compact">{{ entry.duplicate_contacts[0].email }}</p>{% endif %}
-              {% if entry.duplicate_contacts[0].phone %}<p class="muted compact">{{ entry.duplicate_contacts[0].phone }}</p>{% endif %}
-            </article>
-            <article class="summary-card merge-card">
-              <h3>Contact B</h3>
-              <p><strong>{{ entry.duplicate_contacts[1].display or 'Unknown contact' }}</strong></p>
-              {% if entry.duplicate_contacts[1].profile_name or entry.duplicate_contacts[1].book_name %}
-                <p class="muted compact">{{ entry.duplicate_contacts[1].profile_name }} / {{ entry.duplicate_contacts[1].book_name }}</p>
-              {% endif %}
-              {% if entry.duplicate_contacts[1].email %}<p class="muted compact">{{ entry.duplicate_contacts[1].email }}</p>{% endif %}
-              {% if entry.duplicate_contacts[1].phone %}<p class="muted compact">{{ entry.duplicate_contacts[1].phone }}</p>{% endif %}
-            </article>
-            <article class="summary-card merge-card merge-result">
-              <h3>Suggested Merge Result</h3>
-              <p><strong>{{ entry.merged_preview.display or 'Merged contact' }}</strong></p>
-              {% if entry.merged_preview.emails %}<p class="muted compact">Emails: {{ entry.merged_preview.emails|join(', ') }}</p>{% endif %}
-              {% if entry.merged_preview.phones %}<p class="muted compact">Phones: {{ entry.merged_preview.phones|join(', ') }}</p>{% endif %}
-            </article>
-          </div>
-          <div class="button-row">
-            <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">Preview and Apply Mitigation</a>
-          </div>
+        {% if entry.action == 'recommend_merge' %}
+          {% if entry.duplicate_contacts|length >= 2 %}
+            <div class="merge-preview-grid">
+              <article class="summary-card merge-card">
+                <h3>Contact A</h3>
+                <p><strong>{{ entry.duplicate_contacts[0].display or 'Unknown contact' }}</strong></p>
+                {% if entry.duplicate_contacts[0].profile_name or entry.duplicate_contacts[0].book_name %}
+                  <p class="muted compact">{{ entry.duplicate_contacts[0].profile_name }} / {{ entry.duplicate_contacts[0].book_name }}</p>
+                {% endif %}
+                {% if entry.duplicate_contacts[0].email %}<p class="muted compact">{{ entry.duplicate_contacts[0].email }}</p>{% endif %}
+                {% if entry.duplicate_contacts[0].phone %}<p class="muted compact">{{ entry.duplicate_contacts[0].phone }}</p>{% endif %}
+              </article>
+              <article class="summary-card merge-card">
+                <h3>Contact B</h3>
+                <p><strong>{{ entry.duplicate_contacts[1].display or 'Unknown contact' }}</strong></p>
+                {% if entry.duplicate_contacts[1].profile_name or entry.duplicate_contacts[1].book_name %}
+                  <p class="muted compact">{{ entry.duplicate_contacts[1].profile_name }} / {{ entry.duplicate_contacts[1].book_name }}</p>
+                {% endif %}
+                {% if entry.duplicate_contacts[1].email %}<p class="muted compact">{{ entry.duplicate_contacts[1].email }}</p>{% endif %}
+                {% if entry.duplicate_contacts[1].phone %}<p class="muted compact">{{ entry.duplicate_contacts[1].phone }}</p>{% endif %}
+              </article>
+              <article class="summary-card merge-card merge-result">
+                <h3>Suggested Merge Result</h3>
+                <p><strong>{{ entry.merged_preview.display or 'Merged contact' }}</strong></p>
+                {% if entry.merged_preview.emails %}<p class="muted compact">Emails: {{ entry.merged_preview.emails|join(', ') }}</p>{% endif %}
+                {% if entry.merged_preview.phones %}<p class="muted compact">Phones: {{ entry.merged_preview.phones|join(', ') }}</p>{% endif %}
+              </article>
+            </div>
+          {% endif %}
+          {% if entry.can_preview_merge %}
+            <div class="button-row">
+              <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">Preview and Apply Mitigation</a>
+            </div>
+          {% else %}
+            <p class="muted compact">Mitigation preview unavailable: {{ entry.merge_preview_unavailable_reason or "This item is missing source contact references. Re-queue it from a quality scan to enable merge preview." }}</p>
+          {% endif %}
         {% endif %}
 
         <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">

@@ -1032,6 +1032,28 @@ textarea {
   margin-bottom: 0;
 }
 
+.queue-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0.35rem 0 0.25rem;
+}
+
+.queue-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .quality-score-chip {
   display: inline-flex;
   align-items: center;

@@ -85,6 +85,16 @@
             <article class="quality-item">
               <h3>{{ group.type }} match: {{ group.value }}</h3>
               <p class="muted">{{ group.count }} contacts · Match score {{ group.match_score }} · Confidence {{ group.confidence }}</p>
+              {% if group.queue_state_by_action %}
+                <div class="queue-stage-row">
+                  {% for action_key, action_state in group.queue_state_by_action.items() %}
+                    <span class="queue-stage-chip">{{ quality_actions.get(action_key, action_key|replace('_', ' ')|title) }}: {{ action_state.label }}</span>
+                    {% if action_key == "recommend_merge" and action_state.can_preview_merge %}
+                      <a class="button small secondary" href="{{ url_for('quality_review_queue_merge_preview', queue_key=action_state.queue_key) }}">Open merge preview</a>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              {% endif %}
               <form method="post" action="{{ url_for('quality_duplicate_action') }}" class="inline-action-form">
                 <input type="hidden" name="next" value="{{ quality_return_to }}" />
                 <input type="hidden" name="scope" value="global" />
@@ -98,7 +108,8 @@
                   <select name="action" required>
                     <option value="">Choose action</option>
                     {% for action_key, action_label in quality_actions.items() %}
-                      <option value="{{ action_key }}">{{ action_label }}</option>
+                      {% set action_state = group.queue_state_by_action.get(action_key) if group.queue_state_by_action else None %}
+                      <option value="{{ action_key }}">{{ action_label }}{% if action_state %} (Current: {{ action_state.label }}){% endif %}</option>
                     {% endfor %}
                   </select>
                 </label>

@@ -887,6 +887,10 @@ def build_quality_queue_entries(limit=1000):
                         "filename": item.get("filename") or "",
                     }
                 )
+        actionable_contacts = [
+            item for item in normalized_contacts
+            if item.get("profile_id") and item.get("book_path") and item.get("filename")
+        ]
         merged_preview = {}
         if normalized_contacts:
             names = [item.get("display") for item in normalized_contacts if item.get("display")]
@@ -913,9 +917,39 @@ def build_quality_queue_entries(limit=1000):
             "status": status_info.get("status") or details.get("status") or "queued",
             "status_updated_at": status_info.get("updated_at") or event.get("created_at"),
             "duplicate_contacts": normalized_contacts,
+            "actionable_contact_count": len(actionable_contacts),
+            "can_preview_merge": bool((details.get("action") or "") == "recommend_merge" and len(actionable_contacts) >= 2),
             "merged_preview": merged_preview,
         }
     return queue_entries
+
+
+def attach_queue_stage_to_duplicate_groups(duplicate_groups, scope, profile_id=None, collection_path=""):
+    queue_entries = build_quality_queue_entries(limit=1000)
+    normalized_path = (collection_path or "").strip("/")
+    for group in duplicate_groups or []:
+        action_states = {}
+        for action_key in QUALITY_DUPLICATE_ACTIONS:
+            queue_key = quality_queue_key_from_values(
+                scope,
+                profile_id,
+                normalized_path,
+                group.get("type"),
+                group.get("value"),
+                action_key,
+            )
+            entry = queue_entries.get(queue_key)
+            if not entry:
+                continue
+            status = entry.get("status") or "queued"
+            action_states[action_key] = {
+                "status": status,
+                "label": QUALITY_ACTION_STATUSES.get(status, status.replace("_", " ").title()),
+                "queue_key": queue_key,
+                "can_preview_merge": bool(entry.get("can_preview_merge")),
+            }
+        group["queue_state_by_action"] = action_states
+    return duplicate_groups
 
 
 @app.route("/quality/duplicate-action", methods=["POST"])
@@ -1015,6 +1049,10 @@ def quality_review_queue():
             continue
         if selected_profile_id and str(entry.get("profile_id") or "") != selected_profile_id:
             continue
+        if entry.get("action") == "recommend_merge" and not entry.get("can_preview_merge"):
+            entry["merge_preview_unavailable_reason"] = (
+                "Source contact references are missing, so merge preview cannot be opened for this item."
+            )
         filtered_entries.append(entry)
 
     filtered_entries.sort(
@@ -2411,6 +2449,10 @@ def global_contact_quality():
                     errors.append(f"{profile['name']} / {normalized_book['display_name']}: skipped invalid contact ({exc})")
 
     report = build_duplicate_report(contacts)
+    report["duplicates"] = attach_queue_stage_to_duplicate_groups(
+        report.get("duplicates") or [],
+        scope="global",
+    )
     log_event(
         "quality_scan",
         details={
@@ -2942,6 +2984,12 @@ def profile_contact_quality(profile_id, collection_path):
             except Exception as exc:
                 app.logger.warning("Skipping invalid contact during quality scan: %s", exc)
         report = build_duplicate_report(contacts)
+        report["duplicates"] = attach_queue_stage_to_duplicate_groups(
+            report.get("duplicates") or [],
+            scope="book",
+            profile_id=profile_id,
+            collection_path=book.get("path") or collection_path,
+        )
         credential_store.update_connection_status(profile_id, True)
         log_event(
             "quality_scan",

@@ -437,6 +437,73 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(latest["details"].get("action"), "review")
         self.assertEqual(latest["details"].get("duplicate_type"), "Email")
 
+    def test_global_quality_scan_shows_queue_stage_for_duplicate_group(self):
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "review",
+                "label": "Mark for review",
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "status": "queued",
+                "queue_key": "global|||Email|demo@example.test|review",
+            },
+            source="app",
+        )
+
+        response = self.client.get("/contacts/quality")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Mark for review: Ready", response.data)
+        self.assertIn(b"Mark for review (Current: Ready)", response.data)
+
+    def test_book_quality_scan_shows_merge_preview_link_for_queued_recommendation(self):
+        queue_key = f"book|{self.profile_id}|demo/source|Email|demo@example.test|recommend_merge"
+        self.store.add_event(
+            "quality_action",
+            profile_id=self.profile_id,
+            collection_path="demo/source",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "book",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "status": "queued",
+                "queue_key": queue_key,
+                "duplicate_contacts": [
+                    {
+                        "display": "Demo Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-1.vcf",
+                    },
+                    {
+                        "display": "Second Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-2.vcf",
+                    },
+                ],
+            },
+            source="app",
+        )
+
+        response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts/quality")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Recommend merge: Ready", response.data)
+        self.assertIn(b"Open merge preview", response.data)
+
     def test_quality_review_queue_lists_quality_action_items(self):
         self.store.add_event(
             "quality_action",
@@ -482,8 +549,26 @@ class MainRoutesTest(unittest.TestCase):
                 "status": "queued",
                 "queue_key": "global|||Name Similarity|Alex Rivera ~ Alec Rivera|recommend_merge",
                 "duplicate_contacts": [
-                    {"display": "Alex Rivera", "email": "alex@example.test", "phone": "555-0101"},
-                    {"display": "Alec Rivera", "email": "alec@example.test", "phone": "555-0102"},
+                    {
+                        "display": "Demo Contact",
+                        "email": "alex@example.test",
+                        "phone": "555-0101",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-1.vcf",
+                    },
+                    {
+                        "display": "Second Contact",
+                        "email": "alec@example.test",
+                        "phone": "555-0102",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-2.vcf",
+                    },
                 ],
             },
             source="app",
@@ -497,6 +582,32 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Suggested Merge Result", response.data)
         self.assertIn(b"Overall Match Score", response.data)
         self.assertIn(b"Preview and Apply Mitigation", response.data)
+
+    def test_quality_review_queue_explains_when_merge_preview_is_unavailable(self):
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "global",
+                "duplicate_type": "Name Similarity",
+                "duplicate_value": "Alex Rivera ~ Alec Rivera",
+                "match_score": "85",
+                "confidence": "Medium",
+                "status": "queued",
+                "queue_key": "global|||Name Similarity|Alex Rivera ~ Alec Rivera|recommend_merge",
+                "duplicate_contacts": [
+                    {"display": "Alex Rivera", "email": "alex@example.test", "phone": "555-0101"},
+                    {"display": "Alec Rivera", "email": "alec@example.test", "phone": "555-0102"},
+                ],
+            },
+            source="app",
+        )
+
+        response = self.client.get("/quality/review-queue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Mitigation preview unavailable", response.data)
 
     def test_quality_review_queue_status_transition_updates_item_state(self):
         queue_key = "global|||Email|demo@example.test|review"
