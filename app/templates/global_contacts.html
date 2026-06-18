@@ -243,6 +243,7 @@
         listItems.forEach(item => {
           const matches = !query || normalize(item.dataset.search).includes(query);
           item.hidden = !matches;
+          item.classList.toggle('hidden', !matches);
         });
         count.textContent = `${visible} of ${rows.length} contacts`;
         empty.classList.toggle('hidden', visible !== 0);
@@ -286,7 +287,8 @@
           });
           listItems.forEach(item => {
             const checkbox = item.querySelector('input[name="contact_ref"]');
-            if (checkbox && !item.hidden) checkbox.checked = selectAll.checked;
+            const itemIsVisible = !item.hidden && !item.classList.contains('hidden');
+            if (checkbox && itemIsVisible) checkbox.checked = selectAll.checked;
           });
           updateSelectionCount();
         });
