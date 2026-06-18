@@ -12,7 +12,9 @@ This file is the working checklist for Phase 2 and Phase 3. Keep items small eno
 - [x] Contact operations polish
 - [x] Address book management
 - [x] Bulk operations
-- [x] Duplicate detection and contact quality engine
+- [ ] Contact quality engine (advanced scoring/remediation in progress)
+- [ ] Duplicate detection (advanced matching/review workflow in progress)
+- [ ] Contact normalization workflow (pending)
 
 ## Phase 2 - Contact Operations
 
@@ -104,6 +106,8 @@ Goal: become a contact quality and migration platform.
 ### Contact Quality Engine
 
 - [x] Add analysis service that can scan cached or live contacts
+- [ ] Global quality scan from All Contacts view
+- [ ] Scope quality scan by selected connections and address books
 - [ ] Generate health score
 - [x] Detect missing name
 - [x] Detect missing email
@@ -115,6 +119,8 @@ Goal: become a contact quality and migration platform.
 ### Duplicate Detection
 
 - [x] Normalize comparison values for names, phones, and emails
+- [ ] Global duplicate analysis from All Contacts view
+- [ ] Scope duplicate analysis by selected connections and address books
 - [x] Detect possible duplicates by email
 - [x] Detect possible duplicates by phone
 - [x] Detect possible duplicates by exact name
@@ -128,6 +134,8 @@ Goal: become a contact quality and migration platform.
 
 ### Contact Normalization
 
+- [ ] Run normalization analysis from All Contacts view
+- [ ] Scope normalization by selected connections and address books
 - [ ] Detect platform-specific phone labels
 - [ ] Recommend normalized labels
 - [ ] Show current value, recommended value, and impact
@@ -144,12 +152,12 @@ Goal: become a contact quality and migration platform.
 
 ### Audit & History
 
-- [ ] Add event log table
-- [ ] Track contact created
-- [ ] Track contact edited
-- [ ] Track contact moved
-- [ ] Track contact deleted
-- [ ] Show timestamp, action, and user/system source
+- [x] Add event log table
+- [x] Track contact created
+- [x] Track contact edited
+- [x] Track contact moved
+- [x] Track contact deleted
+- [x] Show timestamp, action, and user/system source
 
 ### Recovery
 
@@ -181,13 +189,13 @@ Goal: become a contact quality and migration platform.
 
 ## Suggested Next Build Slices
 
-1. Connection editing UI
-2. Preserve unknown fields during form-based contact editing
-3. Multi-value phone and email editing
-4. Multi-select contact list with bulk delete/export
-5. Global search page
-6. Lightweight duplicate report page
-7. Event log table for imports, exports, moves, deletes, and edits
+1. Global Contact Quality view from All Contacts with scoped selectors (all, selected connections, selected books)
+2. Contact health score model and per-contact score chips in global + book-level views
+3. Empty-contact and deprecated-field detection with warnings and non-destructive recommendations
+4. Duplicate Detection v2: similar-name matching + match score + confidence tiers
+5. Duplicate review actions: ignore, manual review queue, merge recommendation workflow
+6. Contact Normalization v1: detect platform-specific phone labels and propose normalized labels
+7. Approval-first remediation: apply fixes only to selected scope (connections/books/contacts), with preview
 
 ## Definition Of Done
 
