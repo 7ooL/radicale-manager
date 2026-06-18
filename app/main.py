@@ -17,6 +17,7 @@ from flask import (
     session,
     url_for,
     jsonify,
+    Response,
 )
 from radicale_client import RadicaleClient
 from contact_utils import (
@@ -1094,6 +1095,24 @@ def security_settings():
         title="Credential Security",
         security=security_status(),
     )
+
+
+@app.route("/manifest.json")
+def pwa_manifest():
+    with open(os.path.join(app.static_folder, "manifest.json"), "r", encoding="utf-8") as manifest_file:
+        manifest = manifest_file.read()
+    response = Response(manifest, mimetype="application/manifest+json")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.route("/service-worker.js")
+def pwa_service_worker():
+    with open(os.path.join(app.static_folder, "service-worker.js"), "r", encoding="utf-8") as sw_file:
+        script = sw_file.read()
+    response = Response(script, mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.route("/system/routes")

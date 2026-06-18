@@ -3,10 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Radicale Manager - {{ title }}</title>
+  <link rel="manifest" href="{{ url_for('pwa_manifest') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
+  <div id="offline-banner" class="offline-banner hidden" role="status" aria-live="polite">Offline mode: showing cached content.</div>
   <header class="app-header">
     <div class="content-wrap app-header-inner">
       <a class="logo" href="{{ url_for('dashboard') }}">Radicale Manager</a>
@@ -83,5 +90,26 @@
       <p>Home lab Radicale contact manager prototype.</p>
     </div>
   </footer>
+  <script>
+    (() => {
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("{{ url_for('pwa_service_worker') }}").catch(() => {});
+        });
+      }
+
+      const offlineBanner = document.getElementById("offline-banner");
+      if (!offlineBanner) return;
+
+      const updateOnlineState = () => {
+        const offline = !navigator.onLine;
+        offlineBanner.classList.toggle("hidden", !offline);
+      };
+
+      window.addEventListener("online", updateOnlineState);
+      window.addEventListener("offline", updateOnlineState);
+      updateOnlineState();
+    })();
+  </script>
 </body>
 </html>

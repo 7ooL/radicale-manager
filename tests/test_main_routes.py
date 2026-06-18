@@ -144,6 +144,15 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Credential Security", response.data)
         self.assertIn(b"Profile secret", response.data)
 
+    def test_pwa_manifest_and_service_worker_routes_exist(self):
+        manifest = self.client.get("/manifest.json")
+        self.assertEqual(manifest.status_code, 200)
+        self.assertIn(b'"name": "Radicale Manager"', manifest.data)
+
+        service_worker = self.client.get("/service-worker.js")
+        self.assertEqual(service_worker.status_code, 200)
+        self.assertIn(b"self.addEventListener", service_worker.data)
+
     def test_create_addressbook_uses_next_redirect_when_provided(self):
         response = self.client.post(
             f"/connections/{self.profile_id}/addressbooks/create",
