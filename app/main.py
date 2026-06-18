@@ -858,11 +858,13 @@ def quality_ignore_key_from_values(scope, profile_id, collection_path, duplicate
 def build_ignored_duplicate_key_set(limit=5000):
     ignore_events = credential_store.get_recent_events(limit=limit, actions=["quality_ignore"])
     ignored_keys = set()
+    seen_keys = set()
     for event in ignore_events:
         details = event.get("details") or {}
         ignore_key = (details.get("ignore_key") or "").strip()
-        if not ignore_key:
+        if not ignore_key or ignore_key in seen_keys:
             continue
+        seen_keys.add(ignore_key)
         if bool(details.get("ignored")):
             ignored_keys.add(ignore_key)
         else:
