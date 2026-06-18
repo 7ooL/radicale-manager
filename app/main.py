@@ -123,6 +123,26 @@ NAV_TABS = [
     {"name": "Settings", "endpoint": "system_menu", "icon": "⚙️"},
 ]
 
+EVENT_ACTION_LABELS = {
+    "create": "Created contact",
+    "edit": "Edited contact",
+    "delete": "Deleted contact",
+    "move": "Moved contact",
+    "copy": "Copied contact",
+    "duplicate": "Duplicated contact",
+    "import": "Imported contacts",
+    "export": "Exported contacts",
+    "profile_export": "Exported profiles",
+    "profile_import": "Imported profiles",
+    "connection_test": "Tested connection",
+    "addressbook_refresh": "Refreshed address books",
+    "addressbook_export": "Exported address book",
+    "contact_export": "Exported contact",
+    "connection_export": "Exported connection",
+    "backup_export": "Exported backup ZIP",
+    "quality_scan": "Scanned contact quality",
+}
+
 
 def get_active_mobile_tab(endpoint):
     if endpoint in ("dashboard",):
@@ -160,9 +180,10 @@ def get_active_mobile_tab(endpoint):
         "import_connections",
         "profile_export_connection",
         "profile_backup_export",
+        "system_events",
     ):
         return "system_menu"
-    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings"):
+    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings", "system_events"):
         return "system_menu"
     return "dashboard"
 
@@ -193,6 +214,10 @@ def build_breadcrumbs(endpoint, view_args):
     if endpoint == "security_settings":
         crumbs.append({"name": "Settings", "url": url_for("system_menu")})
         crumbs.append({"name": "Credential Security", "url": None})
+        return crumbs
+    if endpoint == "system_events":
+        crumbs.append({"name": "Settings", "url": url_for("system_menu")})
+        crumbs.append({"name": "Event Log", "url": None})
         return crumbs
     if profile_id and collection_path:
         try:
@@ -1065,6 +1090,11 @@ def system_menu():
             "endpoint": "security_settings",
         },
         {
+            "name": "Event Log",
+            "description": "Track recent imports, edits, deletes, moves, and exports.",
+            "endpoint": "system_events",
+        },
+        {
             "name": "Routes Explorer",
             "description": "Browse all registered Flask endpoints and methods.",
             "endpoint": "system_routes",
@@ -1086,6 +1116,44 @@ def system_menu():
         },
     ]
     return render_template("system_menu.html", title="Settings", system_links=system_links)
+
+
+@app.route("/system/events")
+def system_events():
+    """Show recent operation events for audit and troubleshooting."""
+    selected_action = request.args.get("action", "").strip()
+    limit_raw = request.args.get("limit", "").strip()
+    try:
+        limit = int(limit_raw) if limit_raw else 100
+    except Exception:
+        limit = 100
+    limit = max(10, min(limit, 250))
+
+    available_actions = sorted(EVENT_ACTION_LABELS.keys())
+    action_filters = [selected_action] if selected_action in available_actions else None
+    events = credential_store.get_recent_events(limit=limit, actions=action_filters)
+
+    profiles = credential_store.get_profiles()
+    profile_names = {profile["id"]: profile["name"] for profile in profiles}
+    for event in events:
+        action = event.get("action") or ""
+        event["action_label"] = EVENT_ACTION_LABELS.get(action, action.replace("_", " ").title() or "Unknown action")
+        event["profile_name"] = profile_names.get(event.get("profile_id")) or "System"
+        details = event.get("details") or {}
+        if details:
+            event["details_summary"] = ", ".join(f"{key}: {value}" for key, value in details.items())
+        else:
+            event["details_summary"] = ""
+
+    return render_template(
+        "system_events.html",
+        title="Event Log",
+        events=events,
+        action_options=available_actions,
+        selected_action=selected_action if selected_action in available_actions else "",
+        selected_limit=limit,
+        event_action_labels=EVENT_ACTION_LABELS,
+    )
 
 
 @app.route("/system/security")

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Event Log</h1>
+    <p class="muted">Recent system and contact operations for quick auditing and troubleshooting.</p>
+
+    <details class="events-filter-panel">
+      <summary>Filter Events</summary>
+      <form method="get" action="{{ url_for('system_events') }}" class="events-filter-grid">
+        <label class="search-field">
+          <span>Action</span>
+          <select name="action">
+            <option value="">All actions</option>
+            {% for action in action_options %}
+              <option value="{{ action }}" {% if selected_action == action %}selected{% endif %}>
+                {{ event_action_labels.get(action, action|replace('_', ' ')|title) }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="search-field search-field-compact">
+          <span>Rows</span>
+          <input type="number" name="limit" min="10" max="250" value="{{ selected_limit }}" />
+        </label>
+        <div class="search-actions">
+          <button class="button small" type="submit">Apply</button>
+          <a class="button small secondary" href="{{ url_for('system_events') }}">Reset</a>
+        </div>
+      </form>
+    </details>
+
+    {% if events %}
+      <div class="event-list">
+        {% for event in events %}
+          <article class="event-item">
+            <div class="event-title-row">
+              <strong>{{ event.action_label }}</strong>
+              <span class="muted" title="{{ event.created_at }}">{{ event.created_at|relative_time }}</span>
+            </div>
+            <div class="event-meta-grid">
+              <div><strong>Profile</strong> {{ event.profile_name }}</div>
+              {% if event.collection_path %}<div><strong>Book</strong> {{ event.collection_path }}</div>{% endif %}
+              {% if event.contact_filename %}<div><strong>Contact</strong> {{ event.contact_filename }}</div>{% endif %}
+              <div><strong>Source</strong> {{ event.source|title }}</div>
+            </div>
+            {% if event.details_summary %}
+              <p class="muted compact" title="{{ event.details|tojson }}">{{ event.details_summary }}</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No events found for that filter.</p>
+    {% endif %}
+  </div>
+{% endblock %}

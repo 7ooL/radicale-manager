@@ -355,8 +355,27 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Settings", response.data)
         self.assertIn(b"Connections", response.data)
+        self.assertIn(b"Event Log", response.data)
         self.assertIn(b"Routes Explorer", response.data)
         self.assertIn(b"Health JSON", response.data)
+
+    def test_system_events_page_lists_recent_operation_entries(self):
+        self.store.add_event(
+            "delete",
+            profile_id=self.profile_id,
+            collection_path="demo/source",
+            contact_filename="contact-1.vcf",
+            details={"reason": "cleanup"},
+        )
+
+        response = self.client.get("/system/events")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Event Log", response.data)
+        self.assertIn(b"Deleted contact", response.data)
+        self.assertIn(b"Demo", response.data)
+        self.assertIn(b"contact-1.vcf", response.data)
+        self.assertIn(b"reason: cleanup", response.data)
 
     def test_quality_scan_persists_summary_for_dashboard_rollup(self):
         quality_response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts/quality")

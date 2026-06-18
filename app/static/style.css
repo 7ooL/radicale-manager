@@ -354,6 +354,74 @@ textarea {
   margin: 1rem 0;
 }
 
+.events-filter-panel {
+  margin: 1rem 0;
+}
+
+.events-filter-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border-radius: 10px;
+  background: #eef2ff;
+  font-weight: 700;
+}
+
+.events-filter-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.events-filter-panel[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.events-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 12rem) auto;
+  gap: 0.6rem;
+  align-items: end;
+  padding: 0.8rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.event-list {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+
+.event-item {
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.event-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.event-meta-grid {
+  display: grid;
+  gap: 0.3rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  color: #334155;
+}
+
+.event-meta-grid strong {
+  color: #0f172a;
+}
+
 .filter-label {
   flex: 1 1 22rem;
   margin-bottom: 0;
@@ -1278,6 +1346,11 @@ textarea {
     display: grid;
     gap: 0.5rem;
     align-items: stretch;
+  }
+
+  .events-filter-grid {
+    grid-template-columns: 1fr;
+    padding: 0.75rem;
   }
 
   .filter-label {
