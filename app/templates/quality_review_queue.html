@@ -62,7 +62,7 @@
       </form>
     </details>
 
-    {% macro queue_item(entry) %}
+    {% macro queue_item(entry, is_closed=false) %}
       <article class="event-item">
         <div class="event-title-row">
           <strong>{{ entry.action_label }}</strong>
@@ -80,7 +80,7 @@
         {% if entry.duplicate_value %}<p class="muted compact">{{ entry.duplicate_value }}</p>{% endif %}
 
         {% if entry.action == 'recommend_merge' %}
-          {% if entry.duplicate_contacts|length >= 2 %}
+          {% if not is_closed and entry.duplicate_contacts|length >= 2 %}
             <div class="merge-preview-grid">
               <article class="summary-card merge-card">
                 <h3>Contact A</h3>
@@ -108,33 +108,51 @@
               </article>
             </div>
           {% endif %}
-          <div class="button-row">
-            <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">
-              {% if entry.can_preview_merge %}Preview and Apply Mitigation{% else %}Open Merge Preview{% endif %}
-            </a>
-          </div>
-          {% if not entry.can_preview_merge %}
-            <p class="muted compact">Preview data is missing for this queue item. Opening merge preview will try to rebuild source references automatically.</p>
+          {% if is_closed %}
+            <p class="muted compact"><strong>Mitigation result:</strong>
+              {% if entry.status == "resolved" %}
+                {% if entry.status_details.get("mitigation") == "merge_applied_and_sources_deleted" %}
+                  Merged contact saved to {{ entry.status_details.get("dest_path", "destination book") }} and source duplicates removed ({{ entry.status_details.get("source_deleted_count", 0) }}/{{ entry.status_details.get("source_total_count", 0) }}).
+                {% else %}
+                  Mitigation marked complete.
+                {% endif %}
+              {% elif entry.status == "dismissed" %}
+                Closed as dismissed/accepted risk.
+              {% else %}
+                Stage updated to {{ status_options.get(entry.status, entry.status|replace('_', ' ')|title) }}.
+              {% endif %}
+            </p>
+          {% else %}
+            <div class="button-row">
+              <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">
+                {% if entry.can_preview_merge %}Preview and Apply Mitigation{% else %}Open Merge Preview{% endif %}
+              </a>
+            </div>
+            {% if not entry.can_preview_merge %}
+              <p class="muted compact">Preview data is missing for this queue item. Opening merge preview will try to rebuild source references automatically.</p>
+            {% endif %}
           {% endif %}
         {% endif %}
 
-        <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
-          <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
-          <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
-          <input type="hidden" name="current_status" value="{{ entry.status }}" />
-          <label>
-            Update workflow stage
-            <select name="status" required>
-              <option value="" selected>Select next stage</option>
-              {% for status_key, status_label in status_options.items() %}
-                {% if status_key != entry.status %}
-                  <option value="{{ status_key }}">{{ status_label }}</option>
-                {% endif %}
-              {% endfor %}
-            </select>
-          </label>
-          <button class="button small secondary" type="submit">Save Stage</button>
-        </form>
+        {% if not is_closed %}
+          <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
+            <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
+            <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+            <input type="hidden" name="current_status" value="{{ entry.status }}" />
+            <label>
+              Update workflow stage
+              <select name="status" required>
+                <option value="" selected>Select next stage</option>
+                {% for status_key, status_label in status_options.items() %}
+                  {% if status_key != entry.status %}
+                    <option value="{{ status_key }}">{{ status_label }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </label>
+            <button class="button small secondary" type="submit">Save Stage</button>
+          </form>
+        {% endif %}
       </article>
     {% endmacro %}
 
@@ -145,7 +163,7 @@
         {% if active_entries %}
           <div class="event-list">
             {% for entry in active_entries %}
-              {{ queue_item(entry) }}
+              {{ queue_item(entry, false) }}
             {% endfor %}
           </div>
         {% else %}
@@ -159,7 +177,7 @@
         {% if closed_entries %}
           <div class="event-list">
             {% for entry in closed_entries %}
-              {{ queue_item(entry) }}
+              {{ queue_item(entry, true) }}
             {% endfor %}
           </div>
         {% else %}

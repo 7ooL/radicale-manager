@@ -766,9 +766,69 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/quality/review-queue?status=resolved", response.location)
         self.assertTrue(any(path.startswith("demo/dest/") for path in FakeRadicaleClient.contacts.keys()))
+        self.assertNotIn("demo/source/contact-1.vcf", FakeRadicaleClient.contacts)
+        self.assertNotIn("demo/source/contact-2.vcf", FakeRadicaleClient.contacts)
         status_events = self.store.get_recent_events(limit=5, actions=["quality_action_status"])
         self.assertTrue(status_events)
         self.assertEqual(status_events[0]["details"].get("status"), "resolved")
+        self.assertEqual(status_events[0]["details"].get("source_deleted_count"), 2)
+
+    def test_quality_review_queue_closed_items_hide_actions_and_show_compact_result(self):
+        queue_key = "global|||Email|demo@example.test|recommend_merge"
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "status": "queued",
+                "queue_key": queue_key,
+                "duplicate_contacts": [
+                    {
+                        "display": "Demo Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-1.vcf",
+                    },
+                    {
+                        "display": "Second Contact",
+                        "profile_id": self.profile_id,
+                        "profile_name": "Demo",
+                        "book_path": "demo/source",
+                        "book_name": "Source",
+                        "filename": "contact-2.vcf",
+                    },
+                ],
+            },
+            source="app",
+        )
+        self.store.add_event(
+            "quality_action_status",
+            details={
+                "queue_key": queue_key,
+                "status": "resolved",
+                "status_label": "Mitigated",
+                "mitigation": "merge_applied_and_sources_deleted",
+                "dest_path": "demo/dest",
+                "source_deleted_count": 2,
+                "source_total_count": 2,
+            },
+            source="app",
+        )
+
+        response = self.client.get("/quality/review-queue?status=resolved")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Mitigation result:", response.data)
+        self.assertIn(b"source duplicates removed", response.data)
+        self.assertNotIn(b"Preview and Apply Mitigation", response.data)
+        self.assertNotIn(b"Update workflow stage", response.data)
 
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(

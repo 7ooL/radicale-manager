@@ -854,6 +854,7 @@ def build_quality_queue_entries(limit=1000):
         latest_status_by_key[queue_key] = {
             "status": details.get("status") or "queued",
             "updated_at": event.get("created_at"),
+            "details": details,
         }
 
     queue_entries = {}
@@ -916,6 +917,7 @@ def build_quality_queue_entries(limit=1000):
             "created_at": event.get("created_at"),
             "status": status_info.get("status") or details.get("status") or "queued",
             "status_updated_at": status_info.get("updated_at") or event.get("created_at"),
+            "status_details": status_info.get("details") or {},
             "duplicate_contacts": normalized_contacts,
             "actionable_contact_count": len(actionable_contacts),
             "can_preview_merge": bool((details.get("action") or "") == "recommend_merge" and len(actionable_contacts) >= 2),
@@ -1363,24 +1365,71 @@ def quality_review_queue_merge_apply():
         dest_client = get_client_for_profile(dest_profile_id)
         merged_filename = f"{merged_fields['uid']}.vcf"
         dest_client.put_contact(dest_path, merged_filename, merged_vcard)
-        update_cached_contact_count(dest_profile_id, dest_path, None)
     except Exception as exc:
         flash(f"Merge mitigation failed: {exc}", "error")
         return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
 
+    deleted_sources = []
+    delete_failures = []
+    touched_source_books = set()
+    source_clients = {}
+    for ref in source_refs:
+        try:
+            ref_profile_id = int(ref.get("profile_id"))
+            ref_path = (ref.get("book_path") or "").strip("/")
+            ref_filename = (ref.get("filename") or "").strip()
+            if not ref_profile_id or not ref_path or not ref_filename:
+                raise ValueError("invalid source reference")
+            source_clients.setdefault(ref_profile_id, get_client_for_profile(ref_profile_id))
+            source_clients[ref_profile_id].delete_contact(f"{ref_path}/{ref_filename}")
+            touched_source_books.add((ref_profile_id, ref_path))
+            deleted_sources.append({"profile_id": ref_profile_id, "book_path": ref_path, "filename": ref_filename})
+            log_event(
+                "delete",
+                profile_id=ref_profile_id,
+                collection_path=ref_path,
+                contact_filename=ref_filename,
+                details={"reason": "merge_mitigation"},
+            )
+        except Exception as exc:
+            delete_failures.append(
+                {
+                    "profile_id": ref.get("profile_id"),
+                    "book_path": ref.get("book_path"),
+                    "filename": ref.get("filename"),
+                    "error": str(exc),
+                }
+            )
+
+    update_cached_contact_count(dest_profile_id, dest_path, None)
+    for touched_profile_id, touched_path in touched_source_books:
+        update_cached_contact_count(touched_profile_id, touched_path, None)
+
+    merged_status = "resolved" if not delete_failures else "in_review"
+    merged_status_label = QUALITY_ACTION_STATUSES[merged_status]
+    mitigation_mode = "merge_applied_and_sources_deleted" if not delete_failures else "merge_created_sources_not_fully_deleted"
     log_event(
         "quality_action_status",
         details={
             "queue_key": queue_key,
-            "status": "resolved",
-            "status_label": QUALITY_ACTION_STATUSES["resolved"],
-            "mitigation": "merge_created",
+            "status": merged_status,
+            "status_label": merged_status_label,
+            "mitigation": mitigation_mode,
             "dest_profile_id": dest_profile_id,
             "dest_path": dest_path,
             "dest_filename": merged_filename,
+            "source_deleted_count": len(deleted_sources),
+            "source_total_count": len(source_refs),
+            "source_delete_failures": delete_failures,
         },
     )
-    flash(f"Mitigation applied. Merged contact created in {dest_path}.", "success")
+    if delete_failures:
+        flash(
+            "Merged contact created, but one or more source duplicates could not be removed. Item moved to In Review for follow-up.",
+            "error",
+        )
+        return redirect(url_for("quality_review_queue", status="in_review"))
+    flash(f"Mitigation applied. Merged contact created in {dest_path} and source duplicates were removed.", "success")
     return redirect(url_for("quality_review_queue", status="resolved"))
 
 
