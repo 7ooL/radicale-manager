@@ -9,7 +9,7 @@
         <div class="field-row"><span class="field-label">With Email</span><span>{{ stats.with_email }}</span></div>
         <div class="field-row"><span class="field-label">With Phone</span><span>{{ stats.with_phone }}</span></div>
         <div class="field-row"><span class="field-label">Missing Name</span><span>{{ stats.missing_name }}</span></div>
-        <div class="field-row"><span class="field-label">Last Modified</span><span>{{ stats.last_modified or 'unknown' }}</span></div>
+        <div class="field-row"><span class="field-label">Last Modified</span><span title="{{ stats.last_modified or 'unknown' }}">{{ stats.last_modified|relative_time if stats.last_modified else 'unknown' }}</span></div>
       </div>
     {% endif %}
     <div class="button-row">

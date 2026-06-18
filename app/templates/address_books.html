@@ -19,7 +19,7 @@
               </div>
               <div class="meta-row">
                 <strong>Updated</strong>
-                <span>{{ book.last_seen_at or "unknown" }}</span>
+                <span title="{{ book.last_seen_at or 'unknown' }}">{{ book.last_seen_at|relative_time if book.last_seen_at else "unknown" }}</span>
               </div>
             </div>
             <div class="button-row">

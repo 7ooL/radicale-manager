@@ -33,7 +33,11 @@
           </div>
           <div class="metric-row">
             <span>Last Backup</span>
-            <strong>{{ metrics.backup_health.last_backup_at or 'No backup yet' }}</strong>
+            {% if metrics.backup_health.last_backup_at %}
+              <strong title="{{ metrics.backup_health.last_backup_at }}">{{ metrics.backup_health.last_backup_at|relative_time }}</strong>
+            {% else %}
+              <strong>No backup yet</strong>
+            {% endif %}
           </div>
         </section>
 
@@ -57,7 +61,11 @@
           </div>
           <div class="metric-row">
             <span>Last Quality Scan</span>
-            <strong>{{ metrics.last_quality_scan_at or 'Never' }}</strong>
+            {% if metrics.last_quality_scan_at %}
+              <strong title="{{ metrics.last_quality_scan_at }}">{{ metrics.last_quality_scan_at|relative_time }}</strong>
+            {% else %}
+              <strong>Never</strong>
+            {% endif %}
           </div>
         </section>
       </div>
@@ -86,7 +94,7 @@
                     </div>
                     <div class="meta-row">
                       <strong>Last Modified</strong>
-                      <span>{{ book.last_seen_at or 'unknown' }}</span>
+                      <span title="{{ book.last_seen_at or 'unknown' }}">{{ book.last_seen_at|relative_time if book.last_seen_at else 'unknown' }}</span>
                     </div>
                   </div>
                   <div class="button-row">
@@ -113,7 +121,7 @@
             <li>
               <div class="managed-book-main">
                 <strong>{{ event.action }}</strong>
-                <span class="muted">{{ event.created_at }}</span>
+                <span class="muted" title="{{ event.created_at }}">{{ event.created_at|relative_time }}</span>
                 {% if event.collection_path %}<span class="muted">{{ event.collection_path }}</span>{% endif %}
                 {% if event.contact_filename %}<span class="muted">{{ event.contact_filename }}</span>{% endif %}
               </div>
