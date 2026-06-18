@@ -113,6 +113,7 @@ def relative_time_filter(value):
 NAV_ITEMS = [
     {"name": "Dashboard", "endpoint": "dashboard", "icon": "🏠", "quick": True},
     {"name": "All Contacts", "endpoint": "global_contacts", "icon": "👥", "quick": True},
+    {"name": "Quality", "endpoint": "global_contact_quality", "icon": "✅", "quick": False},
     {"name": "Address Books", "endpoint": "address_books", "icon": "📚", "quick": False},
     {"name": "Import", "endpoint": "import_vcf", "icon": "⬆️", "quick": False},
     {"name": "Settings", "endpoint": "system_menu", "icon": "⚙️", "quick": False},
@@ -121,6 +122,7 @@ NAV_ITEMS = [
 NAV_TABS = [
     {"name": "Home", "endpoint": "dashboard", "icon": "🏠"},
     {"name": "Contacts", "endpoint": "global_contacts", "icon": "👥"},
+    {"name": "Quality", "endpoint": "global_contact_quality", "icon": "✅"},
     {"name": "Books", "endpoint": "address_books", "icon": "📚"},
     {"name": "Settings", "endpoint": "system_menu", "icon": "⚙️"},
 ]
@@ -145,6 +147,7 @@ EVENT_ACTION_LABELS = {
     "quality_scan": "Scanned contact quality",
     "quality_action": "Queued quality action",
     "quality_action_status": "Updated quality action status",
+    "quality_ignore": "Updated duplicate ignore state",
 }
 
 QUALITY_DUPLICATE_ACTIONS = {
@@ -173,7 +176,6 @@ def get_active_mobile_tab(endpoint):
         return "dashboard"
     if endpoint in (
         "global_contacts",
-        "global_contact_quality",
         "profile_view_contacts",
         "profile_view_contact",
         "profile_contact_transfer",
@@ -188,6 +190,8 @@ def get_active_mobile_tab(endpoint):
         "global_bulk_contacts",
     ):
         return "global_contacts"
+    if endpoint in ("global_contact_quality", "profile_contact_quality"):
+        return "global_contact_quality"
     if endpoint in ("address_books", "profile_import_vcf", "profile_export_addressbook"):
         return "address_books"
     if endpoint in (
@@ -828,6 +832,51 @@ def quality_queue_key_from_values(scope, profile_id, collection_path, duplicate_
     )
 
 
+def quality_ignore_key_from_values(scope, profile_id, collection_path, duplicate_type, duplicate_value):
+    return "|".join(
+        [
+            str(scope or "global"),
+            str(profile_id or ""),
+            str((collection_path or "").strip("/")),
+            str(duplicate_type or ""),
+            str(duplicate_value or ""),
+        ]
+    )
+
+
+def build_ignored_duplicate_key_set(limit=5000):
+    ignore_events = credential_store.get_recent_events(limit=limit, actions=["quality_ignore"])
+    ignored_keys = set()
+    for event in ignore_events:
+        details = event.get("details") or {}
+        ignore_key = (details.get("ignore_key") or "").strip()
+        if not ignore_key:
+            continue
+        if bool(details.get("ignored")):
+            ignored_keys.add(ignore_key)
+        else:
+            ignored_keys.discard(ignore_key)
+    return ignored_keys
+
+
+def apply_ignored_duplicate_groups(duplicate_groups, scope, profile_id=None, collection_path=""):
+    ignored_keys = build_ignored_duplicate_key_set(limit=5000)
+    visible_groups = []
+    for group in duplicate_groups or []:
+        ignore_key = quality_ignore_key_from_values(
+            scope,
+            profile_id,
+            collection_path,
+            group.get("type"),
+            group.get("value"),
+        )
+        group["ignore_key"] = ignore_key
+        group["ignored"] = ignore_key in ignored_keys
+        if not group["ignored"]:
+            visible_groups.append(group)
+    return visible_groups
+
+
 def quality_queue_key_from_event(event):
     details = event.get("details") or {}
     return quality_queue_key_from_values(
@@ -952,6 +1001,13 @@ def attach_queue_stage_to_duplicate_groups(duplicate_groups, scope, profile_id=N
                 "can_preview_merge": bool(entry.get("can_preview_merge")),
             }
         group["queue_state_by_action"] = action_states
+        preferred_action_state = action_states.get("recommend_merge") or action_states.get("review")
+        if preferred_action_state:
+            group["surface_stage_key"] = preferred_action_state.get("status") or "queued"
+            group["surface_stage_label"] = preferred_action_state.get("label") or "Ready"
+        else:
+            group["surface_stage_key"] = "new"
+            group["surface_stage_label"] = "New"
     return duplicate_groups
 
 
@@ -1203,13 +1259,7 @@ def collapse_typed_methods(methods):
     return collapsed
 
 
-@app.route("/quality/duplicate-action", methods=["POST"])
-def quality_duplicate_action():
-    action = (request.form.get("action") or "").strip()
-    if action not in QUALITY_DUPLICATE_ACTIONS:
-        flash("Select a valid duplicate action.", "error")
-        return redirect_back_or("global_contact_quality")
-
+def parse_duplicate_group_form():
     duplicate_type = (request.form.get("duplicate_type") or "").strip()
     duplicate_value = (request.form.get("duplicate_value") or "").strip()
     confidence = (request.form.get("confidence") or "").strip()
@@ -1245,38 +1295,106 @@ def quality_duplicate_action():
             profile_id = int(profile_id_raw)
         except Exception:
             profile_id = None
+    return {
+        "duplicate_type": duplicate_type,
+        "duplicate_value": duplicate_value,
+        "confidence": confidence,
+        "score_raw": score_raw,
+        "scope": scope,
+        "profile_id": profile_id,
+        "collection_path": collection_path,
+        "duplicate_contacts": duplicate_contacts,
+    }
+
+
+def queue_duplicate_action(action, payload):
     queue_key = quality_queue_key_from_values(
-        scope,
-        profile_id,
-        collection_path,
-        duplicate_type,
-        duplicate_value,
+        payload["scope"],
+        payload["profile_id"],
+        payload["collection_path"],
+        payload["duplicate_type"],
+        payload["duplicate_value"],
         action,
     )
-
     log_event(
         "quality_action",
-        profile_id=profile_id,
-        collection_path=collection_path or None,
+        profile_id=payload["profile_id"],
+        collection_path=payload["collection_path"] or None,
         details={
             "action": action,
             "label": QUALITY_DUPLICATE_ACTIONS[action],
-            "scope": scope,
-            "duplicate_type": duplicate_type,
-            "duplicate_value": duplicate_value,
-            "match_score": score_raw,
-            "confidence": confidence,
+            "scope": payload["scope"],
+            "duplicate_type": payload["duplicate_type"],
+            "duplicate_value": payload["duplicate_value"],
+            "match_score": payload["score_raw"],
+            "confidence": payload["confidence"],
             "status": "queued",
             "queue_key": queue_key,
-            "duplicate_contacts": duplicate_contacts,
+            "duplicate_contacts": payload["duplicate_contacts"],
         },
     )
+    return queue_key
+
+
+@app.route("/quality/duplicate-action", methods=["POST"])
+def quality_duplicate_action():
+    action = (request.form.get("action") or "").strip()
+    if action not in QUALITY_DUPLICATE_ACTIONS:
+        flash("Select a valid duplicate action.", "error")
+        return redirect_back_or("global_contact_quality")
+    payload = parse_duplicate_group_form()
+    queue_duplicate_action(action, payload)
     flash(
-        f"{QUALITY_DUPLICATE_ACTIONS[action]} queued for {duplicate_type or 'duplicate'} group (non-destructive).",
+        f"{QUALITY_DUPLICATE_ACTIONS[action]} queued for {payload['duplicate_type'] or 'duplicate'} group (non-destructive).",
         "success",
     )
-    if profile_id and collection_path:
-        return redirect_back_or("profile_contact_quality", profile_id=profile_id, collection_path=collection_path)
+    if payload["profile_id"] and payload["collection_path"]:
+        return redirect_back_or("profile_contact_quality", profile_id=payload["profile_id"], collection_path=payload["collection_path"])
+    return redirect_back_or("global_contact_quality")
+
+
+@app.route("/quality/duplicate-review-later", methods=["POST"])
+def quality_duplicate_review_later():
+    payload = parse_duplicate_group_form()
+    queue_duplicate_action("review", payload)
+    flash("Saved to review queue.", "success")
+    if payload["profile_id"] and payload["collection_path"]:
+        return redirect_back_or("profile_contact_quality", profile_id=payload["profile_id"], collection_path=payload["collection_path"])
+    return redirect_back_or("global_contact_quality")
+
+
+@app.route("/quality/duplicate-merge", methods=["POST"])
+def quality_duplicate_merge():
+    payload = parse_duplicate_group_form()
+    queue_key = queue_duplicate_action("recommend_merge", payload)
+    return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
+
+
+@app.route("/quality/duplicate-ignore", methods=["POST"])
+def quality_duplicate_ignore():
+    payload = parse_duplicate_group_form()
+    ignore_key = quality_ignore_key_from_values(
+        payload["scope"],
+        payload["profile_id"],
+        payload["collection_path"],
+        payload["duplicate_type"],
+        payload["duplicate_value"],
+    )
+    log_event(
+        "quality_ignore",
+        profile_id=payload["profile_id"],
+        collection_path=payload["collection_path"] or None,
+        details={
+            "ignore_key": ignore_key,
+            "ignored": True,
+            "scope": payload["scope"],
+            "duplicate_type": payload["duplicate_type"],
+            "duplicate_value": payload["duplicate_value"],
+        },
+    )
+    flash("Duplicate group ignored. It will be hidden from scan results.", "success")
+    if payload["profile_id"] and payload["collection_path"]:
+        return redirect_back_or("profile_contact_quality", profile_id=payload["profile_id"], collection_path=payload["collection_path"])
     return redirect_back_or("global_contact_quality")
 
 
@@ -2779,8 +2897,12 @@ def global_contact_quality():
                     errors.append(f"{profile['name']} / {normalized_book['display_name']}: skipped invalid contact ({exc})")
 
     report = build_duplicate_report(contacts)
-    report["duplicates"] = attach_queue_stage_to_duplicate_groups(
+    visible_duplicates = apply_ignored_duplicate_groups(
         report.get("duplicates") or [],
+        scope="global",
+    )
+    report["duplicates"] = attach_queue_stage_to_duplicate_groups(
+        visible_duplicates,
         scope="global",
     )
     log_event(
@@ -3314,8 +3436,14 @@ def profile_contact_quality(profile_id, collection_path):
             except Exception as exc:
                 app.logger.warning("Skipping invalid contact during quality scan: %s", exc)
         report = build_duplicate_report(contacts)
-        report["duplicates"] = attach_queue_stage_to_duplicate_groups(
+        visible_duplicates = apply_ignored_duplicate_groups(
             report.get("duplicates") or [],
+            scope="book",
+            profile_id=profile_id,
+            collection_path=book.get("path") or collection_path,
+        )
+        report["duplicates"] = attach_queue_stage_to_duplicate_groups(
+            visible_duplicates,
             scope="book",
             profile_id=profile_id,
             collection_path=book.get("path") or collection_path,

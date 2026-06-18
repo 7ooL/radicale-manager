@@ -82,8 +82,11 @@
       {% if report.duplicates %}
         <div class="quality-list">
           {% for group in report.duplicates %}
-            <article class="quality-item">
-              <h3>{{ group.type }} match: {{ group.value }}</h3>
+            <article class="quality-item stage-{{ group.surface_stage_key }}">
+              <div class="quality-item-head">
+                <h3>{{ group.type }} match: {{ group.value }}</h3>
+                <span class="queue-surface-badge">{{ group.surface_stage_label }}</span>
+              </div>
               <p class="muted">{{ group.count }} contacts · Match score {{ group.match_score }} · Confidence {{ group.confidence }}</p>
               {% if group.queue_state_by_action %}
                 <div class="queue-stage-row">
@@ -95,26 +98,37 @@
                   {% endfor %}
                 </div>
               {% endif %}
-              <form method="post" action="{{ url_for('quality_duplicate_action') }}" class="inline-action-form">
-                <input type="hidden" name="next" value="{{ quality_return_to }}" />
-                <input type="hidden" name="scope" value="global" />
-                <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
-                <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
-                <input type="hidden" name="match_score" value="{{ group.match_score }}" />
-                <input type="hidden" name="confidence" value="{{ group.confidence }}" />
-                <input type="hidden" name="duplicate_contacts" value="{{ group.contacts|tojson }}" />
-                <label>
-                  Quick action
-                  <select name="action" required>
-                    <option value="">Choose action</option>
-                    {% for action_key, action_label in quality_actions.items() %}
-                      {% set action_state = group.queue_state_by_action.get(action_key) if group.queue_state_by_action else None %}
-                      <option value="{{ action_key }}">{{ action_label }}{% if action_state %} (Current: {{ action_state.label }}){% endif %}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <button class="button small secondary" type="submit">Queue</button>
-              </form>
+              <div class="duplicate-action-row">
+                <form method="post" action="{{ url_for('quality_duplicate_merge') }}" class="inline-action-form">
+                  <input type="hidden" name="next" value="{{ quality_return_to }}" />
+                  <input type="hidden" name="scope" value="global" />
+                  <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
+                  <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
+                  <input type="hidden" name="match_score" value="{{ group.match_score }}" />
+                  <input type="hidden" name="confidence" value="{{ group.confidence }}" />
+                  <input type="hidden" name="duplicate_contacts" value="{{ group.contacts|tojson }}" />
+                  <button class="button small" type="submit">Merge</button>
+                </form>
+                <form method="post" action="{{ url_for('quality_duplicate_review_later') }}" class="inline-action-form">
+                  <input type="hidden" name="next" value="{{ quality_return_to }}" />
+                  <input type="hidden" name="scope" value="global" />
+                  <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
+                  <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
+                  <input type="hidden" name="match_score" value="{{ group.match_score }}" />
+                  <input type="hidden" name="confidence" value="{{ group.confidence }}" />
+                  <input type="hidden" name="duplicate_contacts" value="{{ group.contacts|tojson }}" />
+                  <button class="button small secondary" type="submit">Review Later</button>
+                </form>
+                <form method="post" action="{{ url_for('quality_duplicate_ignore') }}" class="inline-action-form">
+                  <input type="hidden" name="next" value="{{ quality_return_to }}" />
+                  <input type="hidden" name="scope" value="global" />
+                  <input type="hidden" name="duplicate_type" value="{{ group.type }}" />
+                  <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
+                  <input type="hidden" name="match_score" value="{{ group.match_score }}" />
+                  <input type="hidden" name="confidence" value="{{ group.confidence }}" />
+                  <button class="button small ghost-danger" type="submit">Ignore</button>
+                </form>
+              </div>
               <ul>
                 {% for contact in group.contacts %}
                   <li>

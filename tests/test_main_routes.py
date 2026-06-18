@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -458,7 +459,63 @@ class MainRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Mark for review: Ready", response.data)
-        self.assertIn(b"Mark for review (Current: Ready)", response.data)
+        self.assertIn(b"Review Later", response.data)
+        self.assertIn(b"Merge", response.data)
+
+    def test_quality_ignore_hides_duplicate_group_from_scan_results(self):
+        ignore_response = self.client.post(
+            "/quality/duplicate-ignore",
+            data={
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "next": "/contacts/quality",
+            },
+        )
+        self.assertEqual(ignore_response.status_code, 302)
+
+        response = self.client.get("/contacts/quality")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Possible Duplicates", response.data)
+        self.assertIn(b"No duplicate email, phone, or exact-name matches found in this scope.", response.data)
+
+    def test_quality_merge_direct_action_redirects_to_merge_preview(self):
+        response = self.client.post(
+            "/quality/duplicate-merge",
+            data={
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "duplicate_contacts": json.dumps(
+                    [
+                        {
+                            "display": "Demo Contact",
+                            "profile_id": self.profile_id,
+                            "profile_name": "Demo",
+                            "book_path": "demo/source",
+                            "book_name": "Source",
+                            "filename": "contact-1.vcf",
+                        },
+                        {
+                            "display": "Second Contact",
+                            "profile_id": self.profile_id,
+                            "profile_name": "Demo",
+                            "book_path": "demo/source",
+                            "book_name": "Source",
+                            "filename": "contact-2.vcf",
+                        },
+                    ]
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/quality/review-queue/merge-preview?queue_key=", response.location)
 
     def test_book_quality_scan_shows_merge_preview_link_for_queued_recommendation(self):
         queue_key = f"book|{self.profile_id}|demo/source|Email|demo@example.test|recommend_merge"
