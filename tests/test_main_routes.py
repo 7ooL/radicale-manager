@@ -463,6 +463,38 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Mark for review", response.data)
         self.assertIn(b"demo@example.test", response.data)
         self.assertIn(b"Queued", response.data)
+        self.assertIn(b"Update workflow stage", response.data)
+        self.assertIn(b"Active Queue", response.data)
+        self.assertIn(b"Closed Items", response.data)
+
+    def test_quality_review_queue_shows_merge_preview_cards(self):
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "global",
+                "duplicate_type": "Name Similarity",
+                "duplicate_value": "Alex Rivera ~ Alec Rivera",
+                "match_score": "85",
+                "confidence": "Medium",
+                "status": "queued",
+                "queue_key": "global|||Name Similarity|Alex Rivera ~ Alec Rivera|recommend_merge",
+                "duplicate_contacts": [
+                    {"display": "Alex Rivera", "email": "alex@example.test", "phone": "555-0101"},
+                    {"display": "Alec Rivera", "email": "alec@example.test", "phone": "555-0102"},
+                ],
+            },
+            source="app",
+        )
+
+        response = self.client.get("/quality/review-queue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Contact A", response.data)
+        self.assertIn(b"Contact B", response.data)
+        self.assertIn(b"Suggested Merge Result", response.data)
+        self.assertIn(b"Overall Match Score", response.data)
 
     def test_quality_review_queue_status_transition_updates_item_state(self):
         queue_key = "global|||Email|demo@example.test|review"

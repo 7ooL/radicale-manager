@@ -159,6 +159,13 @@ QUALITY_ACTION_STATUSES = {
     "dismissed": "Dismissed",
 }
 
+QUALITY_STATUS_DESCRIPTIONS = {
+    "queued": "New recommendation waiting for triage.",
+    "in_review": "Actively being reviewed for a mitigation decision.",
+    "resolved": "Mitigated or completed; no further action needed.",
+    "dismissed": "Accepted risk / false positive; intentionally closed.",
+}
+
 
 def get_active_mobile_tab(endpoint):
     if endpoint in ("dashboard",):
@@ -836,6 +843,25 @@ def quality_duplicate_action():
     confidence = (request.form.get("confidence") or "").strip()
     score_raw = (request.form.get("match_score") or "").strip()
     scope = (request.form.get("scope") or "global").strip()
+    duplicate_contacts_raw = (request.form.get("duplicate_contacts") or "").strip()
+    duplicate_contacts = []
+    if duplicate_contacts_raw:
+        try:
+            payload = json.loads(duplicate_contacts_raw)
+            if isinstance(payload, list):
+                for item in payload[:4]:
+                    if isinstance(item, dict):
+                        duplicate_contacts.append(
+                            {
+                                "display": item.get("display") or "",
+                                "email": item.get("email") or "",
+                                "phone": item.get("phone") or "",
+                                "profile_name": item.get("profile_name") or "",
+                                "book_name": item.get("book_name") or "",
+                            }
+                        )
+        except Exception:
+            duplicate_contacts = []
     profile_id_raw = (request.form.get("profile_id") or "").strip()
     collection_path = (request.form.get("collection_path") or "").strip()
     profile_id = None
@@ -867,6 +893,7 @@ def quality_duplicate_action():
             "confidence": confidence,
             "status": "queued",
             "queue_key": queue_key,
+            "duplicate_contacts": duplicate_contacts,
         },
     )
     flash(
@@ -909,6 +936,36 @@ def quality_review_queue():
             continue
         status_info = latest_status_by_key.get(queue_key) or {}
         profile_id = event.get("profile_id")
+        duplicate_contacts = details.get("duplicate_contacts") or []
+        if isinstance(duplicate_contacts, str):
+            try:
+                duplicate_contacts = json.loads(duplicate_contacts)
+            except Exception:
+                duplicate_contacts = []
+        if not isinstance(duplicate_contacts, list):
+            duplicate_contacts = []
+        normalized_contacts = []
+        for item in duplicate_contacts[:4]:
+            if isinstance(item, dict):
+                normalized_contacts.append(
+                    {
+                        "display": item.get("display") or "",
+                        "email": item.get("email") or "",
+                        "phone": item.get("phone") or "",
+                        "profile_name": item.get("profile_name") or "",
+                        "book_name": item.get("book_name") or "",
+                    }
+                )
+        merged_preview = {}
+        if normalized_contacts:
+            names = [item.get("display") for item in normalized_contacts if item.get("display")]
+            emails = sorted({part.strip() for item in normalized_contacts for part in (item.get("email") or "").split(",") if part.strip()})
+            phones = sorted({part.strip() for item in normalized_contacts for part in (item.get("phone") or "").split(",") if part.strip()})
+            merged_preview = {
+                "display": names[0] if names else "Merged contact",
+                "emails": emails,
+                "phones": phones,
+            }
         queue_entries[queue_key] = {
             "queue_key": queue_key,
             "scope": details.get("scope") or "global",
@@ -924,6 +981,8 @@ def quality_review_queue():
             "created_at": event.get("created_at"),
             "status": status_info.get("status") or details.get("status") or "queued",
             "status_updated_at": status_info.get("updated_at") or event.get("created_at"),
+            "duplicate_contacts": normalized_contacts,
+            "merged_preview": merged_preview,
         }
 
     filtered_entries = []
@@ -942,12 +1001,18 @@ def quality_review_queue():
         key=lambda item: parse_iso_timestamp(item.get("status_updated_at")) or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
     )
+    active_statuses = {"queued", "in_review"}
+    active_entries = [entry for entry in filtered_entries if entry.get("status") in active_statuses]
+    closed_entries = [entry for entry in filtered_entries if entry.get("status") not in active_statuses]
     return render_template(
         "quality_review_queue.html",
         title="Quality Review Queue",
         entries=filtered_entries,
+        active_entries=active_entries,
+        closed_entries=closed_entries,
         profiles=profiles,
         status_options=QUALITY_ACTION_STATUSES,
+        status_descriptions=QUALITY_STATUS_DESCRIPTIONS,
         action_options=QUALITY_DUPLICATE_ACTIONS,
         filters={
             "scope": selected_scope,
@@ -962,11 +1027,15 @@ def quality_review_queue():
 def quality_review_queue_status():
     queue_key = (request.form.get("queue_key") or "").strip()
     status = (request.form.get("status") or "").strip()
+    current_status = (request.form.get("current_status") or "").strip()
     if not queue_key:
         flash("Unable to update queue item: missing key.", "error")
         return redirect_back_or("quality_review_queue")
     if status not in QUALITY_ACTION_STATUSES:
         flash("Choose a valid queue status.", "error")
+        return redirect_back_or("quality_review_queue")
+    if current_status and status == current_status:
+        flash("That item is already in this stage.", "error")
         return redirect_back_or("quality_review_queue")
 
     details = {

@@ -422,6 +422,27 @@ textarea {
   color: #0f172a;
 }
 
+.merge-preview-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  margin: 0.45rem 0 0.2rem;
+}
+
+.merge-card {
+  padding: 0.65rem 0.75rem;
+}
+
+.merge-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.merge-result {
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+}
+
 .filter-label {
   flex: 1 1 22rem;
   margin-bottom: 0;

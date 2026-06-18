@@ -2,7 +2,19 @@
 {% block content %}
   <div class="card">
     <h1>Quality Review Queue</h1>
-    <p class="muted">Queued duplicate-action recommendations with status transitions and scope filters.</p>
+    <p class="muted">Review duplicate recommendations, understand the expected merge outcome, and move each item through clear workflow stages.</p>
+
+    <section class="summary-card full-width">
+      <h2>Workflow Stages</h2>
+      <div class="event-meta-grid">
+        {% for status_key, status_label in status_options.items() %}
+          <div>
+            <strong>{{ status_label }}</strong>
+            <span class="muted">{{ status_descriptions.get(status_key) }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
 
     <details class="events-filter-panel" {% if filters.scope or filters.status or filters.action or filters.profile_id %}open{% endif %}>
       <summary>Filter Queue</summary>
@@ -49,41 +61,100 @@
       </form>
     </details>
 
-    {% if entries %}
-      <div class="event-list">
-        {% for entry in entries %}
-          <article class="event-item">
-            <div class="event-title-row">
-              <strong>{{ entry.action_label }}</strong>
-              <span class="muted" title="{{ entry.status_updated_at }}">{{ entry.status_updated_at|relative_time }}</span>
-            </div>
-            <div class="event-meta-grid">
-              <div><strong>Status</strong> {{ status_options.get(entry.status, entry.status|replace('_', ' ')|title) }}</div>
-              <div><strong>Scope</strong> {{ entry.scope|title }}</div>
-              <div><strong>Profile</strong> {{ entry.profile_name }}</div>
-              {% if entry.collection_path %}<div><strong>Book</strong> {{ entry.collection_path }}</div>{% endif %}
-              {% if entry.duplicate_type %}<div><strong>Type</strong> {{ entry.duplicate_type }}</div>{% endif %}
-              {% if entry.match_score %}<div><strong>Match Score</strong> {{ entry.match_score }}</div>{% endif %}
-              {% if entry.confidence %}<div><strong>Confidence</strong> {{ entry.confidence }}</div>{% endif %}
-            </div>
-            {% if entry.duplicate_value %}<p class="muted compact">{{ entry.duplicate_value }}</p>{% endif %}
+    {% macro queue_item(entry) %}
+      <article class="event-item">
+        <div class="event-title-row">
+          <strong>{{ entry.action_label }}</strong>
+          <span class="muted" title="{{ entry.status_updated_at }}">{{ entry.status_updated_at|relative_time }}</span>
+        </div>
+        <div class="event-meta-grid">
+          <div><strong>Status</strong> {{ status_options.get(entry.status, entry.status|replace('_', ' ')|title) }}</div>
+          <div><strong>Scope</strong> {{ entry.scope|title }}</div>
+          <div><strong>Profile</strong> {{ entry.profile_name }}</div>
+          {% if entry.collection_path %}<div><strong>Book</strong> {{ entry.collection_path }}</div>{% endif %}
+          {% if entry.duplicate_type %}<div><strong>Type</strong> {{ entry.duplicate_type }}</div>{% endif %}
+          {% if entry.match_score %}<div><strong>Overall Match Score</strong> {{ entry.match_score }}</div>{% endif %}
+          {% if entry.confidence %}<div><strong>Confidence</strong> {{ entry.confidence }}</div>{% endif %}
+        </div>
+        {% if entry.duplicate_value %}<p class="muted compact">{{ entry.duplicate_value }}</p>{% endif %}
 
-            <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
-              <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
-              <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
-              <label>
-                Move to status
-                <select name="status" required>
-                  {% for status_key, status_label in status_options.items() %}
-                    <option value="{{ status_key }}" {% if entry.status == status_key %}selected{% endif %}>{{ status_label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <button class="button small secondary" type="submit">Update</button>
-            </form>
-          </article>
-        {% endfor %}
-      </div>
+        {% if entry.action == 'recommend_merge' and entry.duplicate_contacts|length >= 2 %}
+          <div class="merge-preview-grid">
+            <article class="summary-card merge-card">
+              <h3>Contact A</h3>
+              <p><strong>{{ entry.duplicate_contacts[0].display or 'Unknown contact' }}</strong></p>
+              {% if entry.duplicate_contacts[0].profile_name or entry.duplicate_contacts[0].book_name %}
+                <p class="muted compact">{{ entry.duplicate_contacts[0].profile_name }} / {{ entry.duplicate_contacts[0].book_name }}</p>
+              {% endif %}
+              {% if entry.duplicate_contacts[0].email %}<p class="muted compact">{{ entry.duplicate_contacts[0].email }}</p>{% endif %}
+              {% if entry.duplicate_contacts[0].phone %}<p class="muted compact">{{ entry.duplicate_contacts[0].phone }}</p>{% endif %}
+            </article>
+            <article class="summary-card merge-card">
+              <h3>Contact B</h3>
+              <p><strong>{{ entry.duplicate_contacts[1].display or 'Unknown contact' }}</strong></p>
+              {% if entry.duplicate_contacts[1].profile_name or entry.duplicate_contacts[1].book_name %}
+                <p class="muted compact">{{ entry.duplicate_contacts[1].profile_name }} / {{ entry.duplicate_contacts[1].book_name }}</p>
+              {% endif %}
+              {% if entry.duplicate_contacts[1].email %}<p class="muted compact">{{ entry.duplicate_contacts[1].email }}</p>{% endif %}
+              {% if entry.duplicate_contacts[1].phone %}<p class="muted compact">{{ entry.duplicate_contacts[1].phone }}</p>{% endif %}
+            </article>
+            <article class="summary-card merge-card merge-result">
+              <h3>Suggested Merge Result</h3>
+              <p><strong>{{ entry.merged_preview.display or 'Merged contact' }}</strong></p>
+              {% if entry.merged_preview.emails %}<p class="muted compact">Emails: {{ entry.merged_preview.emails|join(', ') }}</p>{% endif %}
+              {% if entry.merged_preview.phones %}<p class="muted compact">Phones: {{ entry.merged_preview.phones|join(', ') }}</p>{% endif %}
+            </article>
+          </div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
+          <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
+          <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+          <input type="hidden" name="current_status" value="{{ entry.status }}" />
+          <label>
+            Update workflow stage
+            <select name="status" required>
+              <option value="" selected>Select next stage</option>
+              {% for status_key, status_label in status_options.items() %}
+                {% if status_key != entry.status %}
+                  <option value="{{ status_key }}">{{ status_label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </label>
+          <button class="button small secondary" type="submit">Update Stage</button>
+        </form>
+      </article>
+    {% endmacro %}
+
+    {% if entries %}
+      <section class="profile-block">
+        <h2>Active Queue ({{ active_entries|length }})</h2>
+        <p class="muted compact">Items waiting or currently under review.</p>
+        {% if active_entries %}
+          <div class="event-list">
+            {% for entry in active_entries %}
+              {{ queue_item(entry) }}
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>No active queue items for this filter.</p>
+        {% endif %}
+      </section>
+
+      <section class="profile-block">
+        <h2>Closed Items ({{ closed_entries|length }})</h2>
+        <p class="muted compact">Resolved or dismissed findings are kept here for audit history.</p>
+        {% if closed_entries %}
+          <div class="event-list">
+            {% for entry in closed_entries %}
+              {{ queue_item(entry) }}
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>No closed queue items for this filter.</p>
+        {% endif %}
+      </section>
     {% else %}
       <p>No queued quality actions match this filter.</p>
     {% endif %}

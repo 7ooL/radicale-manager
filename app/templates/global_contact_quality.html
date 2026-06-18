@@ -92,6 +92,7 @@
                 <input type="hidden" name="duplicate_value" value="{{ group.value }}" />
                 <input type="hidden" name="match_score" value="{{ group.match_score }}" />
                 <input type="hidden" name="confidence" value="{{ group.confidence }}" />
+                <input type="hidden" name="duplicate_contacts" value="{{ group.contacts|tojson }}" />
                 <label>
                   Quick action
                   <select name="action" required>
