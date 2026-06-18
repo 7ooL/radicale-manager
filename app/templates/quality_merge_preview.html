@@ -1,71 +1,150 @@
 {% extends "base.html" %}
 {% block content %}
+  {% set source_a = source_details[0] if source_details|length > 0 else None %}
+  {% set source_b = source_details[1] if source_details|length > 1 else None %}
   <div class="card">
     <h1>Merge Mitigation Preview</h1>
     <p class="muted">Compare both contacts, choose final values, and select where the merged record will live before applying mitigation.</p>
 
-    <div class="summary-grid quality-summary">
-      <div class="summary-card">
-        <h2>Duplicate Type</h2>
-        <p>{{ entry.duplicate_type or 'Unknown' }}</p>
+    <div class="merge-meta-row">
+      <div class="merge-meta-chip">
+        <strong>Type</strong>
+        <span>{{ entry.duplicate_type or 'Unknown' }}</span>
       </div>
-      <div class="summary-card">
-        <h2>Overall Match Score</h2>
-        <p>{{ entry.match_score or 'n/a' }}</p>
+      <div class="merge-meta-chip">
+        <strong>Match Score</strong>
+        <span>{{ entry.match_score or 'n/a' }}</span>
       </div>
-      <div class="summary-card">
-        <h2>Confidence</h2>
-        <p>{{ entry.confidence or 'n/a' }}</p>
+      <div class="merge-meta-chip">
+        <strong>Confidence</strong>
+        <span>{{ entry.confidence or 'n/a' }}</span>
       </div>
-      <div class="summary-card">
-        <h2>Current Stage</h2>
-        <p>{{ entry.status|replace('_', ' ')|title }}</p>
+      <div class="merge-meta-chip">
+        <strong>Stage</strong>
+        <span>{{ entry.status|replace('_', ' ')|title }}</span>
       </div>
     </div>
 
-    <section class="summary-card full-width">
+    <section class="summary-card full-width merge-section-compact">
       <h2>Source Contacts</h2>
-      <div class="merge-preview-grid">
+      <div class="merge-source-grid">
         {% for source in source_details %}
-          <article class="summary-card merge-card">
-            <h3>{{ source.ref.display or source.fields.full_name or source.ref.filename }}</h3>
+          <article class="merge-source-card">
+            <h3>{{ "Contact A" if loop.index0 == 0 else "Contact B" }}</h3>
+            <p><strong>{{ source.ref.display or source.fields.full_name or source.ref.filename }}</strong></p>
             <p class="muted compact">{{ source.ref.profile_name }} / {{ source.ref.book_name }}</p>
             {% if source.fields.emails %}<p class="muted compact">Emails: {{ source.fields.emails|join(', ') }}</p>{% endif %}
             {% if source.fields.phones %}<p class="muted compact">Phones: {{ source.fields.phones|join(', ') }}</p>{% endif %}
             {% if source.fields.organization %}<p class="muted compact">Org: {{ source.fields.organization }}</p>{% endif %}
             {% if source.fields.job_title %}<p class="muted compact">Title: {{ source.fields.job_title }}</p>{% endif %}
-            {% if source.fields.note %}<p class="muted compact">Note: {{ source.fields.note }}</p>{% endif %}
           </article>
         {% endfor %}
       </div>
     </section>
 
-    <form method="post" action="{{ url_for('quality_review_queue_merge_apply') }}" class="summary-card full-width">
+    <form method="post" action="{{ url_for('quality_review_queue_merge_apply') }}" class="summary-card full-width merge-section-compact">
       <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
 
       <h2>Merged Record</h2>
-      <label>
-        Full Name
+      <p class="muted compact">Choose values from Contact A or Contact B for conflicting fields, then adjust manually if needed.</p>
+
+      <div class="merge-pick-all">
+        <button class="button small secondary merge-select-source" type="button" data-source="a">Use Contact A Values</button>
+        <button class="button small secondary merge-select-source" type="button" data-source="b">Use Contact B Values</button>
+      </div>
+
+      <div class="merge-field-chooser">
+        <div class="merge-field-header">Field</div>
+        <div class="merge-field-header">Contact A</div>
+        <div class="merge-field-header">Contact B</div>
+        <div class="merge-field-header">Final</div>
+
+        <div class="merge-field-label">Full Name</div>
+        <button class="merge-value-button" type="button" data-source="a" data-field="full_name">
+          {{ source_a.fields.full_name if source_a else "None" }}
+        </button>
+        <button class="merge-value-button" type="button" data-source="b" data-field="full_name">
+          {{ source_b.fields.full_name if source_b else "None" }}
+        </button>
         <input type="text" name="full_name" value="{{ merged_defaults.full_name }}" required />
-      </label>
-      <label>
-        Organization
+
+        <div class="merge-field-label">Organization</div>
+        <button class="merge-value-button" type="button" data-source="a" data-field="organization">
+          {{ source_a.fields.organization if source_a and source_a.fields.organization else "None" }}
+        </button>
+        <button class="merge-value-button" type="button" data-source="b" data-field="organization">
+          {{ source_b.fields.organization if source_b and source_b.fields.organization else "None" }}
+        </button>
         <input type="text" name="organization" value="{{ merged_defaults.organization }}" />
-      </label>
-      <label>
-        Job Title
+
+        <div class="merge-field-label">Job Title</div>
+        <button class="merge-value-button" type="button" data-source="a" data-field="job_title">
+          {{ source_a.fields.job_title if source_a and source_a.fields.job_title else "None" }}
+        </button>
+        <button class="merge-value-button" type="button" data-source="b" data-field="job_title">
+          {{ source_b.fields.job_title if source_b and source_b.fields.job_title else "None" }}
+        </button>
         <input type="text" name="job_title" value="{{ merged_defaults.job_title }}" />
+      </div>
+
+      <label>
+        Emails
+        <div class="merge-list-picker">
+          <div>
+            <strong>Contact A</strong>
+            <ul>
+              {% for email in source_a.fields.emails if source_a and source_a.fields.emails %}
+                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="emails" value="{{ email }}" checked /> {{ email }}</label></li>
+              {% else %}
+                <li class="muted compact">None</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <strong>Contact B</strong>
+            <ul>
+              {% for email in source_b.fields.emails if source_b and source_b.fields.emails %}
+                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="emails" value="{{ email }}" checked /> {{ email }}</label></li>
+              {% else %}
+                <li class="muted compact">None</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <textarea name="emails" rows="3">{% if merged_defaults.emails %}{{ merged_defaults.emails|join('\n') }}{% endif %}</textarea>
       </label>
       <label>
-        Emails (one per line)
-        <textarea name="emails" rows="4">{% if merged_defaults.emails %}{{ merged_defaults.emails|join('\n') }}{% endif %}</textarea>
-      </label>
-      <label>
-        Phones (one per line)
-        <textarea name="phones" rows="4">{% if merged_defaults.phones %}{{ merged_defaults.phones|join('\n') }}{% endif %}</textarea>
+        Phones
+        <div class="merge-list-picker">
+          <div>
+            <strong>Contact A</strong>
+            <ul>
+              {% for phone in source_a.fields.phones if source_a and source_a.fields.phones %}
+                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="phones" value="{{ phone }}" checked /> {{ phone }}</label></li>
+              {% else %}
+                <li class="muted compact">None</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <strong>Contact B</strong>
+            <ul>
+              {% for phone in source_b.fields.phones if source_b and source_b.fields.phones %}
+                <li><label class="checkbox-label"><input type="checkbox" class="merge-list-choice" data-target="phones" value="{{ phone }}" checked /> {{ phone }}</label></li>
+              {% else %}
+                <li class="muted compact">None</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <textarea name="phones" rows="3">{% if merged_defaults.phones %}{{ merged_defaults.phones|join('\n') }}{% endif %}</textarea>
       </label>
       <label>
         Note
+        <div class="button-row">
+          <button class="button small secondary merge-value-button" type="button" data-source="a" data-field="note">Use Contact A Note</button>
+          <button class="button small secondary merge-value-button" type="button" data-source="b" data-field="note">Use Contact B Note</button>
+        </div>
         <textarea name="note" rows="3">{{ merged_defaults.note }}</textarea>
       </label>
       <label>
@@ -86,4 +165,65 @@
       </div>
     </form>
   </div>
+  <script>
+    (() => {
+      const sourceValues = {
+        a: {
+          full_name: {{ (source_a.fields.full_name if source_a else "")|tojson }},
+          organization: {{ (source_a.fields.organization if source_a else "")|tojson }},
+          job_title: {{ (source_a.fields.job_title if source_a else "")|tojson }},
+          note: {{ (source_a.fields.note if source_a else "")|tojson }},
+        },
+        b: {
+          full_name: {{ (source_b.fields.full_name if source_b else "")|tojson }},
+          organization: {{ (source_b.fields.organization if source_b else "")|tojson }},
+          job_title: {{ (source_b.fields.job_title if source_b else "")|tojson }},
+          note: {{ (source_b.fields.note if source_b else "")|tojson }},
+        },
+      };
+
+      const applyScalar = (sourceKey, field) => {
+        const target = document.querySelector(`[name="${field}"]`);
+        if (!target) return;
+        target.value = sourceValues[sourceKey]?.[field] || "";
+      };
+
+      document.querySelectorAll(".merge-value-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const sourceKey = button.getAttribute("data-source");
+          const field = button.getAttribute("data-field");
+          if (!sourceKey || !field) return;
+          applyScalar(sourceKey, field);
+        });
+      });
+
+      document.querySelectorAll(".merge-select-source").forEach((button) => {
+        button.addEventListener("click", () => {
+          const sourceKey = button.getAttribute("data-source");
+          if (!sourceKey) return;
+          ["full_name", "organization", "job_title", "note"].forEach((field) => applyScalar(sourceKey, field));
+        });
+      });
+
+      const syncListTarget = (targetName) => {
+        const selectedValues = Array.from(
+          document.querySelectorAll(`.merge-list-choice[data-target="${targetName}"]:checked`)
+        ).map((el) => (el.value || "").trim()).filter(Boolean);
+        const deduped = Array.from(new Set(selectedValues));
+        const target = document.querySelector(`[name="${targetName}"]`);
+        if (target) target.value = deduped.join("\n");
+      };
+
+      document.querySelectorAll(".merge-list-choice").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const targetName = checkbox.getAttribute("data-target");
+          if (!targetName) return;
+          syncListTarget(targetName);
+        });
+      });
+
+      syncListTarget("emails");
+      syncListTarget("phones");
+    })();
+  </script>
 {% endblock %}

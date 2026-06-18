@@ -1231,6 +1231,9 @@ def quality_review_queue_merge_preview():
     if entry.get("action") != "recommend_merge":
         flash("Merge preview is only available for merge recommendations.", "error")
         return redirect(url_for("quality_review_queue"))
+    if entry.get("status") in {"resolved", "dismissed"}:
+        flash("This queue item is closed and cannot be merged again from preview.", "error")
+        return redirect(url_for("quality_review_queue", status=entry.get("status")))
     entry = hydrate_queue_entry_contact_refs(entry)
 
     contacts = entry.get("duplicate_contacts") or []
@@ -1317,6 +1320,9 @@ def quality_review_queue_merge_apply():
     if not entry or entry.get("action") != "recommend_merge":
         flash("Merge queue item not found.", "error")
         return redirect(url_for("quality_review_queue"))
+    if entry.get("status") in {"resolved", "dismissed"}:
+        flash("This queue item is closed and cannot be mitigated again.", "error")
+        return redirect(url_for("quality_review_queue", status=entry.get("status")))
 
     source_refs = [
         item for item in (entry.get("duplicate_contacts") or [])
@@ -1354,13 +1360,17 @@ def quality_review_queue_merge_apply():
         flash("Merged contact needs a full name.", "error")
         return redirect(url_for("quality_review_queue_merge_preview", queue_key=queue_key))
 
+    source_vcards = []
     try:
-        source_client = get_client_for_profile(int(source_refs[0]["profile_id"]))
-        source_vcard, _etag = source_client.get_contact(
-            f"{source_refs[0]['book_path'].rstrip('/')}/{source_refs[0]['filename']}"
-        )
+        for source_ref in source_refs:
+            source_client = get_client_for_profile(int(source_ref["profile_id"]))
+            source_vcard, _etag = source_client.get_contact(
+                f"{source_ref['book_path'].rstrip('/')}/{source_ref['filename']}"
+            )
+            source_vcards.append(source_vcard)
         merged_vcard = build_vcard_from_fields(merged_fields)
-        merged_vcard = merge_unknown_fields_into_vcard(source_vcard, merged_vcard)
+        for source_vcard in source_vcards:
+            merged_vcard = merge_unknown_fields_into_vcard(source_vcard, merged_vcard)
 
         dest_client = get_client_for_profile(dest_profile_id)
         merged_filename = f"{merged_fields['uid']}.vcf"

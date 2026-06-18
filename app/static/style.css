@@ -443,6 +443,127 @@ textarea {
   background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
 }
 
+.merge-meta-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.55rem;
+  margin: 0.5rem 0 0.8rem;
+}
+
+.merge-meta-chip {
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 0.55rem 0.65rem;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.merge-meta-chip strong {
+  font-size: 0.82rem;
+  color: #1e3a8a;
+}
+
+.merge-meta-chip span {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.merge-section-compact {
+  padding: 0.8rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.merge-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.55rem;
+}
+
+.merge-source-card {
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.65rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.merge-source-card h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #1e3a8a;
+}
+
+.merge-pick-all {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin: 0.45rem 0 0.55rem;
+}
+
+.merge-field-chooser {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 8.5rem) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(10rem, 1.2fr);
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.8rem;
+  align-items: center;
+}
+
+.merge-field-header {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #475569;
+  padding: 0.15rem 0.2rem;
+}
+
+.merge-field-label {
+  font-weight: 700;
+  color: #0f172a;
+  padding: 0.15rem 0.2rem;
+}
+
+.merge-value-button {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 9px;
+  font: inherit;
+  text-align: left;
+  padding: 0.38rem 0.5rem;
+  min-height: 2.3rem;
+  cursor: pointer;
+}
+
+.merge-value-button:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.merge-list-picker {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  padding: 0.55rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  margin-bottom: 0.4rem;
+}
+
+.merge-list-picker ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+.merge-list-picker li {
+  margin: 0.2rem 0;
+}
+
 .stage-help {
   display: inline-grid;
   place-items: center;
@@ -1453,6 +1574,20 @@ textarea {
   .events-filter-grid {
     grid-template-columns: 1fr;
     padding: 0.75rem;
+  }
+
+  .merge-field-chooser {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .merge-field-header {
+    display: none;
+  }
+
+  .merge-field-label {
+    padding-top: 0.3rem;
+    border-top: 1px dashed #cbd5e1;
   }
 
   .filter-label {
