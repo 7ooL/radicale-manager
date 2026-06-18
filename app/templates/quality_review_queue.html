@@ -108,12 +108,13 @@
               </article>
             </div>
           {% endif %}
-          {% if entry.can_preview_merge %}
-            <div class="button-row">
-              <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">Preview and Apply Mitigation</a>
-            </div>
-          {% else %}
-            <p class="muted compact">Mitigation preview unavailable: {{ entry.merge_preview_unavailable_reason or "This item is missing source contact references. Re-queue it from a quality scan to enable merge preview." }}</p>
+          <div class="button-row">
+            <a class="button small" href="{{ url_for('quality_review_queue_merge_preview', queue_key=entry.queue_key) }}">
+              {% if entry.can_preview_merge %}Preview and Apply Mitigation{% else %}Open Merge Preview{% endif %}
+            </a>
+          </div>
+          {% if not entry.can_preview_merge %}
+            <p class="muted compact">Preview data is missing for this queue item. Opening merge preview will try to rebuild source references automatically.</p>
           {% endif %}
         {% endif %}
 

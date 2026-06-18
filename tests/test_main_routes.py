@@ -607,7 +607,36 @@ class MainRoutesTest(unittest.TestCase):
         response = self.client.get("/quality/review-queue")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Mitigation preview unavailable", response.data)
+        self.assertIn(b"Preview data is missing for this queue item", response.data)
+        self.assertIn(b"Open Merge Preview", response.data)
+
+    def test_quality_merge_preview_rebuilds_missing_references_for_email_duplicate(self):
+        queue_key = "global|||Email|demo@example.test|recommend_merge"
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "recommend_merge",
+                "label": "Recommend merge",
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "status": "queued",
+                "queue_key": queue_key,
+                "duplicate_contacts": [
+                    {"display": "Contact One", "email": "demo@example.test"},
+                    {"display": "Contact Two", "email": "demo@example.test"},
+                ],
+            },
+            source="app",
+        )
+
+        response = self.client.get(f"/quality/review-queue/merge-preview?queue_key={queue_key}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Merge Mitigation Preview", response.data)
+        self.assertIn(b"Destination Address Book", response.data)
 
     def test_quality_review_queue_status_transition_updates_item_state(self):
         queue_key = "global|||Email|demo@example.test|review"

@@ -952,6 +952,140 @@ def attach_queue_stage_to_duplicate_groups(duplicate_groups, scope, profile_id=N
     return duplicate_groups
 
 
+def duplicate_contact_matches(entry, contact):
+    duplicate_type = (entry.get("duplicate_type") or "").strip().casefold()
+    duplicate_value = (entry.get("duplicate_value") or "").strip()
+    if not duplicate_type or not duplicate_value:
+        return False
+
+    if duplicate_type == "email":
+        target = normalize_duplicate_key(duplicate_value)
+        if not target:
+            return False
+        for email in contact.get("emails") or []:
+            if normalize_duplicate_key(email) == target:
+                return True
+        return False
+
+    if duplicate_type == "phone":
+        target = normalize_phone_key(duplicate_value)
+        if not target:
+            return False
+        for phone in contact.get("phones") or []:
+            if normalize_phone_key(phone) == target:
+                return True
+        return False
+
+    if duplicate_type == "name":
+        target = normalize_duplicate_key(duplicate_value)
+        if not target:
+            return False
+        return normalize_duplicate_key(contact.get("full_name")) == target
+
+    if duplicate_type == "name similarity":
+        parts = [part.strip() for part in duplicate_value.split("~", 1)]
+        if len(parts) != 2:
+            return False
+        candidate_names = {normalize_duplicate_key(parts[0]), normalize_duplicate_key(parts[1])}
+        display = normalize_duplicate_key(contact.get("full_name") or contact.get("filename"))
+        return bool(display and display in candidate_names)
+
+    return False
+
+
+def rebuild_duplicate_contacts_for_queue_entry(entry, max_contacts=2):
+    scope = (entry.get("scope") or "global").strip()
+    target_profile_id = entry.get("profile_id")
+    target_book = (entry.get("collection_path") or "").strip("/")
+
+    if scope == "book" and (not target_profile_id or not target_book):
+        return []
+
+    source_profiles = []
+    if scope == "book":
+        profile = credential_store.get_profile(int(target_profile_id)) if target_profile_id else None
+        if profile:
+            source_profiles = [profile]
+    else:
+        source_profiles = credential_store.get_enabled_profiles()
+
+    matches = []
+    for profile in source_profiles:
+        profile_id = profile.get("id")
+        if not profile_id:
+            continue
+        if scope == "global" and target_profile_id and int(target_profile_id) != int(profile_id):
+            continue
+        try:
+            client = get_client_for_profile(int(profile_id))
+        except Exception:
+            continue
+        books = credential_store.get_cached_address_books(int(profile_id)) or []
+        for book in books:
+            normalized_book = normalize_book_for_template(book)
+            normalized_path = normalized_book["path"].strip("/")
+            if scope == "book" and normalized_path != target_book:
+                continue
+            try:
+                listed = client.list_contacts(normalized_book["path"])
+            except Exception:
+                continue
+            for item in listed:
+                try:
+                    parsed = vcard_to_dict(item["vcard"])
+                except Exception:
+                    continue
+                if not duplicate_contact_matches(entry, parsed):
+                    continue
+                filename = get_contact_filename(item.get("href") or "")
+                matches.append(
+                    {
+                        "display": parsed.get("full_name") or filename or "Unnamed contact",
+                        "email": ", ".join(parsed.get("emails") or []),
+                        "phone": ", ".join(parsed.get("phones") or []),
+                        "profile_name": profile.get("name") or "",
+                        "book_name": normalized_book["display_name"] or "",
+                        "profile_id": int(profile_id),
+                        "book_path": normalized_path,
+                        "filename": filename,
+                    }
+                )
+                if len(matches) >= max_contacts:
+                    return matches
+    return matches
+
+
+def hydrate_queue_entry_contact_refs(entry):
+    if not entry or (entry.get("action") != "recommend_merge"):
+        return entry
+    if entry.get("can_preview_merge"):
+        return entry
+    rebuilt = rebuild_duplicate_contacts_for_queue_entry(entry, max_contacts=2)
+    if len(rebuilt) < 2:
+        return entry
+
+    details = {
+        "action": entry.get("action"),
+        "label": QUALITY_DUPLICATE_ACTIONS.get(entry.get("action"), entry.get("action_label") or "Recommend merge"),
+        "scope": entry.get("scope") or "global",
+        "duplicate_type": entry.get("duplicate_type") or "",
+        "duplicate_value": entry.get("duplicate_value") or "",
+        "match_score": entry.get("match_score") or "",
+        "confidence": entry.get("confidence") or "",
+        "status": entry.get("status") or "queued",
+        "queue_key": entry.get("queue_key"),
+        "duplicate_contacts": rebuilt,
+    }
+    log_event(
+        "quality_action",
+        profile_id=entry.get("profile_id"),
+        collection_path=entry.get("collection_path") or None,
+        details=details,
+    )
+    refreshed_entries = build_quality_queue_entries(limit=1000)
+    return refreshed_entries.get(entry.get("queue_key")) or entry
+
+
 @app.route("/quality/duplicate-action", methods=["POST"])
 def quality_duplicate_action():
     action = (request.form.get("action") or "").strip()
@@ -1095,6 +1229,7 @@ def quality_review_queue_merge_preview():
     if entry.get("action") != "recommend_merge":
         flash("Merge preview is only available for merge recommendations.", "error")
         return redirect(url_for("quality_review_queue"))
+    entry = hydrate_queue_entry_contact_refs(entry)
 
     contacts = entry.get("duplicate_contacts") or []
     actionable_contacts = [
