@@ -322,7 +322,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   padding: 0 0.25rem;
-  font-size: 2rem;
+  font-size: 1.2rem;
   line-height: 1.15;
   font-weight: 800;
   color: #0b1f44;
@@ -1618,6 +1618,12 @@ textarea {
   }
 }
 
+@media (max-width: 767px) {
+  .global-contacts-table {
+    display: none !important;
+  }
+}
+
 @media (max-width: 640px) {
   .content-wrap {
     width: min(100% - 1rem, 1120px);
@@ -1725,10 +1731,6 @@ textarea {
 
   .data-table td[data-label="Actions"]::before {
     flex: 0 0 100%;
-  }
-
-  .global-contacts-table {
-    display: none !important;
   }
 
   .queue-section > summary {
