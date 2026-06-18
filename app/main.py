@@ -143,12 +143,20 @@ EVENT_ACTION_LABELS = {
     "backup_export": "Exported backup ZIP",
     "quality_scan": "Scanned contact quality",
     "quality_action": "Queued quality action",
+    "quality_action_status": "Updated quality action status",
 }
 
 QUALITY_DUPLICATE_ACTIONS = {
     "ignore": "Ignore",
     "review": "Mark for review",
     "recommend_merge": "Recommend merge",
+}
+
+QUALITY_ACTION_STATUSES = {
+    "queued": "Queued",
+    "in_review": "In Review",
+    "resolved": "Resolved",
+    "dismissed": "Dismissed",
 }
 
 
@@ -190,9 +198,10 @@ def get_active_mobile_tab(endpoint):
         "profile_export_connection",
         "profile_backup_export",
         "system_events",
+        "quality_review_queue",
     ):
         return "system_menu"
-    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings", "system_events"):
+    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings", "system_events", "quality_review_queue"):
         return "system_menu"
     return "dashboard"
 
@@ -227,6 +236,10 @@ def build_breadcrumbs(endpoint, view_args):
     if endpoint == "system_events":
         crumbs.append({"name": "Settings", "url": url_for("system_menu")})
         crumbs.append({"name": "Event Log", "url": None})
+        return crumbs
+    if endpoint == "quality_review_queue":
+        crumbs.append({"name": "Settings", "url": url_for("system_menu")})
+        crumbs.append({"name": "Quality Review Queue", "url": None})
         return crumbs
     if endpoint == "global_contact_quality":
         crumbs.append({"name": "All Contacts", "url": url_for("global_contacts")})
@@ -786,6 +799,31 @@ def build_duplicate_report(contacts):
     }
 
 
+def quality_queue_key_from_values(scope, profile_id, collection_path, duplicate_type, duplicate_value, queue_action):
+    return "|".join(
+        [
+            str(scope or "global"),
+            str(profile_id or ""),
+            str(collection_path or ""),
+            str(duplicate_type or ""),
+            str(duplicate_value or ""),
+            str(queue_action or ""),
+        ]
+    )
+
+
+def quality_queue_key_from_event(event):
+    details = event.get("details") or {}
+    return quality_queue_key_from_values(
+        details.get("scope"),
+        event.get("profile_id") or details.get("profile_id"),
+        event.get("collection_path") or details.get("collection_path"),
+        details.get("duplicate_type"),
+        details.get("duplicate_value"),
+        details.get("action"),
+    )
+
+
 @app.route("/quality/duplicate-action", methods=["POST"])
 def quality_duplicate_action():
     action = (request.form.get("action") or "").strip()
@@ -806,6 +844,14 @@ def quality_duplicate_action():
             profile_id = int(profile_id_raw)
         except Exception:
             profile_id = None
+    queue_key = quality_queue_key_from_values(
+        scope,
+        profile_id,
+        collection_path,
+        duplicate_type,
+        duplicate_value,
+        action,
+    )
 
     log_event(
         "quality_action",
@@ -819,6 +865,8 @@ def quality_duplicate_action():
             "duplicate_value": duplicate_value,
             "match_score": score_raw,
             "confidence": confidence,
+            "status": "queued",
+            "queue_key": queue_key,
         },
     )
     flash(
@@ -828,6 +876,107 @@ def quality_duplicate_action():
     if profile_id and collection_path:
         return redirect_back_or("profile_contact_quality", profile_id=profile_id, collection_path=collection_path)
     return redirect_back_or("global_contact_quality")
+
+
+@app.route("/quality/review-queue")
+def quality_review_queue():
+    selected_scope = (request.args.get("scope") or "").strip()
+    selected_status = (request.args.get("status") or "").strip()
+    selected_action = (request.args.get("action") or "").strip()
+    selected_profile_id = (request.args.get("profile_id") or "").strip()
+
+    action_events = credential_store.get_recent_events(limit=1000, actions=["quality_action"])
+    status_events = credential_store.get_recent_events(limit=1000, actions=["quality_action_status"])
+    profiles = credential_store.get_profiles()
+    profile_names = {profile["id"]: profile["name"] for profile in profiles}
+
+    latest_status_by_key = {}
+    for event in status_events:
+        details = event.get("details") or {}
+        queue_key = details.get("queue_key")
+        if not queue_key or queue_key in latest_status_by_key:
+            continue
+        latest_status_by_key[queue_key] = {
+            "status": details.get("status") or "queued",
+            "updated_at": event.get("created_at"),
+        }
+
+    queue_entries = {}
+    for event in action_events:
+        details = event.get("details") or {}
+        queue_key = details.get("queue_key") or quality_queue_key_from_event(event)
+        if not queue_key or queue_key in queue_entries:
+            continue
+        status_info = latest_status_by_key.get(queue_key) or {}
+        profile_id = event.get("profile_id")
+        queue_entries[queue_key] = {
+            "queue_key": queue_key,
+            "scope": details.get("scope") or "global",
+            "action": details.get("action") or "",
+            "action_label": QUALITY_DUPLICATE_ACTIONS.get(details.get("action"), details.get("label") or (details.get("action") or "").title()),
+            "duplicate_type": details.get("duplicate_type") or "",
+            "duplicate_value": details.get("duplicate_value") or "",
+            "match_score": details.get("match_score") or "",
+            "confidence": details.get("confidence") or "",
+            "profile_id": profile_id,
+            "profile_name": profile_names.get(profile_id) if profile_id else "All profiles",
+            "collection_path": event.get("collection_path") or details.get("collection_path") or "",
+            "created_at": event.get("created_at"),
+            "status": status_info.get("status") or details.get("status") or "queued",
+            "status_updated_at": status_info.get("updated_at") or event.get("created_at"),
+        }
+
+    filtered_entries = []
+    for entry in queue_entries.values():
+        if selected_scope and entry["scope"] != selected_scope:
+            continue
+        if selected_status and entry["status"] != selected_status:
+            continue
+        if selected_action and entry["action"] != selected_action:
+            continue
+        if selected_profile_id and str(entry.get("profile_id") or "") != selected_profile_id:
+            continue
+        filtered_entries.append(entry)
+
+    filtered_entries.sort(
+        key=lambda item: parse_iso_timestamp(item.get("status_updated_at")) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return render_template(
+        "quality_review_queue.html",
+        title="Quality Review Queue",
+        entries=filtered_entries,
+        profiles=profiles,
+        status_options=QUALITY_ACTION_STATUSES,
+        action_options=QUALITY_DUPLICATE_ACTIONS,
+        filters={
+            "scope": selected_scope,
+            "status": selected_status,
+            "action": selected_action,
+            "profile_id": selected_profile_id,
+        },
+    )
+
+
+@app.route("/quality/review-queue/status", methods=["POST"])
+def quality_review_queue_status():
+    queue_key = (request.form.get("queue_key") or "").strip()
+    status = (request.form.get("status") or "").strip()
+    if not queue_key:
+        flash("Unable to update queue item: missing key.", "error")
+        return redirect_back_or("quality_review_queue")
+    if status not in QUALITY_ACTION_STATUSES:
+        flash("Choose a valid queue status.", "error")
+        return redirect_back_or("quality_review_queue")
+
+    details = {
+        "queue_key": queue_key,
+        "status": status,
+        "status_label": QUALITY_ACTION_STATUSES[status],
+    }
+    log_event("quality_action_status", details=details)
+    flash(f"Queue item moved to {QUALITY_ACTION_STATUSES[status]}.", "success")
+    return redirect_back_or("quality_review_queue")
 
 
 def empty_contact_fields():
@@ -1383,6 +1532,11 @@ def system_menu():
             "name": "Event Log",
             "description": "Track recent imports, edits, deletes, moves, and exports.",
             "endpoint": "system_events",
+        },
+        {
+            "name": "Quality Review Queue",
+            "description": "Review queued duplicate actions and move items through status states.",
+            "endpoint": "quality_review_queue",
         },
         {
             "name": "Routes Explorer",

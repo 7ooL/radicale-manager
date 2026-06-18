@@ -437,6 +437,64 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(latest["details"].get("action"), "review")
         self.assertEqual(latest["details"].get("duplicate_type"), "Email")
 
+    def test_quality_review_queue_lists_quality_action_items(self):
+        self.store.add_event(
+            "quality_action",
+            profile_id=self.profile_id,
+            collection_path="demo/source",
+            details={
+                "action": "review",
+                "label": "Mark for review",
+                "scope": "book",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "status": "queued",
+                "queue_key": "book|1|demo/source|Email|demo@example.test|review",
+            },
+            source="app",
+        )
+
+        response = self.client.get("/quality/review-queue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Quality Review Queue", response.data)
+        self.assertIn(b"Mark for review", response.data)
+        self.assertIn(b"demo@example.test", response.data)
+        self.assertIn(b"Queued", response.data)
+
+    def test_quality_review_queue_status_transition_updates_item_state(self):
+        queue_key = "global|||Email|demo@example.test|review"
+        self.store.add_event(
+            "quality_action",
+            details={
+                "action": "review",
+                "label": "Mark for review",
+                "scope": "global",
+                "duplicate_type": "Email",
+                "duplicate_value": "demo@example.test",
+                "match_score": "100",
+                "confidence": "High",
+                "status": "queued",
+                "queue_key": queue_key,
+            },
+            source="app",
+        )
+
+        response = self.client.post(
+            "/quality/review-queue/status",
+            data={"queue_key": queue_key, "status": "in_review", "next": "/quality/review-queue"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith("/quality/review-queue"))
+        events = self.store.get_recent_events(limit=5, actions=["quality_action_status"])
+        self.assertTrue(events)
+        latest = events[0]
+        self.assertEqual(latest["details"].get("queue_key"), queue_key)
+        self.assertEqual(latest["details"].get("status"), "in_review")
+
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(
             f"/profiles/{self.profile_id}/books/demo/source/contacts/contact-1.vcf/transfer?action=move"
@@ -461,6 +519,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Settings", response.data)
         self.assertIn(b"Connections", response.data)
         self.assertIn(b"Event Log", response.data)
+        self.assertIn(b"Quality Review Queue", response.data)
         self.assertIn(b"Routes Explorer", response.data)
         self.assertIn(b"Health JSON", response.data)
 

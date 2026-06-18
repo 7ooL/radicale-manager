@@ -128,7 +128,7 @@ Goal: become a contact quality and migration platform.
 - [x] Assign match score
 - [x] Show duplicate review page
 - [x] Support ignore (non-destructive queue)
-- [x] Support manual review (non-destructive queue)
+- [x] Support manual review (non-destructive queue + status transitions)
 - [x] Support merge recommendation (non-destructive queue)
 - [ ] Support approved merge
 

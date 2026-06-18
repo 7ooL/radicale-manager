@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Quality Review Queue</h1>
+    <p class="muted">Queued duplicate-action recommendations with status transitions and scope filters.</p>
+
+    <details class="events-filter-panel" {% if filters.scope or filters.status or filters.action or filters.profile_id %}open{% endif %}>
+      <summary>Filter Queue</summary>
+      <form method="get" action="{{ url_for('quality_review_queue') }}" class="events-filter-grid">
+        <label class="search-field">
+          <span>Scope</span>
+          <select name="scope">
+            <option value="">All scopes</option>
+            <option value="global" {% if filters.scope == "global" %}selected{% endif %}>Global</option>
+            <option value="book" {% if filters.scope == "book" %}selected{% endif %}>Book</option>
+          </select>
+        </label>
+        <label class="search-field">
+          <span>Action</span>
+          <select name="action">
+            <option value="">All actions</option>
+            {% for action_key, action_label in action_options.items() %}
+              <option value="{{ action_key }}" {% if filters.action == action_key %}selected{% endif %}>{{ action_label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="search-field">
+          <span>Status</span>
+          <select name="status">
+            <option value="">All statuses</option>
+            {% for status_key, status_label in status_options.items() %}
+              <option value="{{ status_key }}" {% if filters.status == status_key %}selected{% endif %}>{{ status_label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="search-field">
+          <span>Connection</span>
+          <select name="profile_id">
+            <option value="">All connections</option>
+            {% for profile in profiles %}
+              <option value="{{ profile.id }}" {% if filters.profile_id == profile.id|string %}selected{% endif %}>{{ profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="search-actions">
+          <button class="button small" type="submit">Apply</button>
+          <a class="button small secondary" href="{{ url_for('quality_review_queue') }}">Reset</a>
+        </div>
+      </form>
+    </details>
+
+    {% if entries %}
+      <div class="event-list">
+        {% for entry in entries %}
+          <article class="event-item">
+            <div class="event-title-row">
+              <strong>{{ entry.action_label }}</strong>
+              <span class="muted" title="{{ entry.status_updated_at }}">{{ entry.status_updated_at|relative_time }}</span>
+            </div>
+            <div class="event-meta-grid">
+              <div><strong>Status</strong> {{ status_options.get(entry.status, entry.status|replace('_', ' ')|title) }}</div>
+              <div><strong>Scope</strong> {{ entry.scope|title }}</div>
+              <div><strong>Profile</strong> {{ entry.profile_name }}</div>
+              {% if entry.collection_path %}<div><strong>Book</strong> {{ entry.collection_path }}</div>{% endif %}
+              {% if entry.duplicate_type %}<div><strong>Type</strong> {{ entry.duplicate_type }}</div>{% endif %}
+              {% if entry.match_score %}<div><strong>Match Score</strong> {{ entry.match_score }}</div>{% endif %}
+              {% if entry.confidence %}<div><strong>Confidence</strong> {{ entry.confidence }}</div>{% endif %}
+            </div>
+            {% if entry.duplicate_value %}<p class="muted compact">{{ entry.duplicate_value }}</p>{% endif %}
+
+            <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
+              <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
+              <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+              <label>
+                Move to status
+                <select name="status" required>
+                  {% for status_key, status_label in status_options.items() %}
+                    <option value="{{ status_key }}" {% if entry.status == status_key %}selected{% endif %}>{{ status_label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <button class="button small secondary" type="submit">Update</button>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>No queued quality actions match this filter.</p>
+    {% endif %}
+  </div>
+{% endblock %}
