@@ -109,6 +109,7 @@ def get_active_mobile_tab(endpoint):
         return "address_books"
     if endpoint in (
         "connections",
+        "connection_detail",
         "new_connection",
         "edit_connection",
         "delete_connection",
@@ -123,7 +124,7 @@ def get_active_mobile_tab(endpoint):
         "profile_backup_export",
     ):
         return "system_menu"
-    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles"):
+    if endpoint in ("system_menu", "system_routes", "health", "ready", "debug_profiles", "security_settings"):
         return "system_menu"
     return "dashboard"
 
@@ -145,6 +146,16 @@ def build_breadcrumbs(endpoint, view_args):
 
     profile_id = view_args.get("profile_id")
     collection_path = view_args.get("collection_path")
+    if profile_id and not collection_path and endpoint == "connection_detail":
+        profile = credential_store.get_profile(profile_id)
+        crumbs.append({"name": "Settings", "url": url_for("system_menu")})
+        crumbs.append({"name": "Connections", "url": url_for("connections")})
+        crumbs.append({"name": profile.get("name") if profile else "Connection", "url": None})
+        return crumbs
+    if endpoint == "security_settings":
+        crumbs.append({"name": "Settings", "url": url_for("system_menu")})
+        crumbs.append({"name": "Credential Security", "url": None})
+        return crumbs
     if profile_id and collection_path:
         try:
             profile = credential_store.get_profile(profile_id)
@@ -566,6 +577,14 @@ def security_status():
     }
 
 
+def redirect_back_or(endpoint, **values):
+    """Redirect to a local `next` path when present, else to a safe endpoint."""
+    next_path = (request.form.get("next") or request.args.get("next") or "").strip()
+    if next_path.startswith("/") and not next_path.startswith("//"):
+        return redirect(next_path)
+    return redirect(url_for(endpoint, **values))
+
+
 def make_client():
     """Build a RadicaleClient from the active session connection."""
     active = get_active_connection()
@@ -730,7 +749,21 @@ def connections():
         "connections.html",
         title="Connections",
         profiles=profiles,
-        security=security_status(),
+    )
+
+
+@app.route("/connections/<int:profile_id>")
+def connection_detail(profile_id):
+    profile = credential_store.get_profile(profile_id)
+    if not profile:
+        flash("Profile not found.", "error")
+        return redirect(url_for("connections"))
+    books = credential_store.get_cached_address_books(profile_id) or []
+    profile["books"] = [normalize_book_for_template(book) for book in books]
+    return render_template(
+        "connections_detail.html",
+        title=f"Connection - {profile.get('name')}",
+        profile=profile,
     )
 
 
@@ -797,7 +830,7 @@ def import_connections():
     except Exception as exc:
         app.logger.exception("Connection import failed")
         flash(f"Connection import failed: {exc}", "error")
-    return redirect(url_for("connections"))
+    return redirect_back_or("connections")
 
 
 @app.route("/connections/new", methods=["GET", "POST"])
@@ -862,7 +895,7 @@ def edit_connection(profile_id):
     profile = credential_store.get_profile(profile_id)
     if not profile:
         flash("Profile not found.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     form = {
         "server_url": profile.get("server_url") or "",
@@ -955,6 +988,11 @@ def system_menu():
             "endpoint": "connections",
         },
         {
+            "name": "Credential Security",
+            "description": "Encryption readiness and profile-secret status.",
+            "endpoint": "security_settings",
+        },
+        {
             "name": "Routes Explorer",
             "description": "Browse all registered Flask endpoints and methods.",
             "endpoint": "system_routes",
@@ -976,6 +1014,15 @@ def system_menu():
         },
     ]
     return render_template("system_menu.html", title="Settings", system_links=system_links)
+
+
+@app.route("/system/security")
+def security_settings():
+    return render_template(
+        "security.html",
+        title="Credential Security",
+        security=security_status(),
+    )
 
 
 @app.route("/system/routes")
@@ -1054,7 +1101,7 @@ def refresh_addressbooks(profile_id):
         log_event("addressbook_refresh", profile_id=profile_id, details={"result": "failed", "error": str(exc)})
         app.logger.exception("Refresh failed for %s", profile_id)
         flash(f"Refresh failed: {exc}", "error")
-    return redirect(url_for("connections"))
+    return redirect_back_or("connections")
 
 
 @app.route("/connections/<int:profile_id>/addressbooks/create", methods=["POST"])
@@ -1062,15 +1109,15 @@ def create_addressbook(profile_id):
     profile = credential_store.get_profile(profile_id)
     if not profile:
         flash("Profile not found.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
     if not profile.get("password"):
         flash("Cannot create address book: profile has no stored password.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     display_name = request.form.get("display_name", "").strip()
     if not display_name:
         flash("Address book name is required.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     try:
         existing_paths = {
@@ -1092,7 +1139,7 @@ def create_addressbook(profile_id):
     except Exception as exc:
         app.logger.exception("Failed to create address book for profile %s", profile_id)
         flash(f"Failed to create address book: {exc}", "error")
-    return redirect(url_for("connections"))
+    return redirect_back_or("connections")
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/rename", methods=["POST"])
@@ -1100,15 +1147,15 @@ def rename_addressbook(profile_id, collection_path):
     profile = credential_store.get_profile(profile_id)
     if not profile:
         flash("Profile not found.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
     if not profile.get("password"):
         flash("Cannot rename address book: profile has no stored password.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     display_name = request.form.get("display_name", "").strip()
     if not display_name:
         flash("Address book name is required.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     try:
         client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
@@ -1119,7 +1166,7 @@ def rename_addressbook(profile_id, collection_path):
     except Exception as exc:
         app.logger.exception("Failed to rename address book %s", collection_path)
         flash(f"Failed to rename address book: {exc}", "error")
-    return redirect(url_for("connections"))
+    return redirect_back_or("connections")
 
 
 @app.route("/profiles/<int:profile_id>/books/<path:collection_path>/delete", methods=["POST"])
@@ -1127,10 +1174,10 @@ def delete_addressbook(profile_id, collection_path):
     profile = credential_store.get_profile(profile_id)
     if not profile:
         flash("Profile not found.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
     if not profile.get("password"):
         flash("Cannot delete address book: profile has no stored password.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     try:
         client = RadicaleClient(profile["server_url"], profile["username"], profile["password"])
@@ -1739,7 +1786,7 @@ def profile_bulk_contacts(profile_id, collection_path):
     except Exception as exc:
         app.logger.exception("Failed to build client for profile %s", profile_id)
         flash(f"Unable to access profile: {exc}", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     if action == "delete":
         deleted = 0
@@ -1891,7 +1938,7 @@ def profile_contact_quality(profile_id, collection_path):
     except Exception as exc:
         app.logger.exception("Failed to build client for profile %s", profile_id)
         flash(f"Unable to access profile: {exc}", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
     try:
         books = credential_store.get_cached_address_books(profile_id)
         book = normalize_book_for_template(
@@ -1939,7 +1986,7 @@ def profile_new_contact(profile_id, collection_path):
     except Exception as exc:
         app.logger.exception("Failed to build client for profile %s", profile_id)
         flash(f"Unable to access profile: {exc}", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
 
     books = credential_store.get_cached_address_books(profile_id)
     book = normalize_book_for_template(
@@ -2161,12 +2208,12 @@ def profile_export_connection(profile_id):
     profile = credential_store.get_profile(profile_id)
     if not profile:
         flash("Profile not found.", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
     try:
         client = get_client_for_profile(profile_id)
     except Exception as exc:
         flash(f"Unable to access profile: {exc}", "error")
-        return redirect(url_for("connections"))
+        return redirect_back_or("connections")
     books = credential_store.get_cached_address_books(profile_id) or []
     blocks = []
     failed = []

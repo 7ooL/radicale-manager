@@ -129,6 +129,30 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b'value="demo"', response.data)
         self.assertIn(b"Leave blank to keep the current password.", response.data)
 
+    def test_connection_detail_page_shows_address_book_management(self):
+        response = self.client.get(f"/connections/{self.profile_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Demo", response.data)
+        self.assertIn(b"Address Book", response.data)
+        self.assertIn(b"Source", response.data)
+
+    def test_security_settings_page_shows_encryption_status(self):
+        response = self.client.get("/system/security")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Credential Security", response.data)
+        self.assertIn(b"Profile secret", response.data)
+
+    def test_create_addressbook_uses_next_redirect_when_provided(self):
+        response = self.client.post(
+            f"/connections/{self.profile_id}/addressbooks/create",
+            data={"display_name": "", "next": f"/connections/{self.profile_id}"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith(f"/connections/{self.profile_id}"))
+
     def test_edit_connection_post_updates_core_fields_and_keeps_password_when_blank(self):
         response = self.client.post(
             f"/connections/{self.profile_id}/edit",

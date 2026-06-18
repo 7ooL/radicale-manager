@@ -2,6 +2,7 @@
 {% block content %}
   <div class="card">
     <h1>Connections</h1>
+    <p class="muted">Compact profile list. Open a profile to manage books and advanced actions.</p>
     <div class="button-row">
       <a class="button" href="{{ url_for('new_connection') }}">New Connection</a>
       <a class="button secondary" href="{{ url_for('export_connections') }}">Export Profiles</a>
@@ -13,66 +14,41 @@
       </label>
       <button class="button small" type="submit">Import</button>
     </form>
-    {% if security %}
-      <div class="summary-card">
-        <h2>Credential Security</h2>
-        <div class="field-row"><span class="field-label">Encryption library</span><span>{{ 'Ready' if security.fernet_available else 'Missing (install cryptography)' }}</span></div>
-        <div class="field-row"><span class="field-label">Profile secret</span><span>{{ 'Configured' if security.secret_configured else 'Not configured' }}</span></div>
-        <div class="field-row"><span class="field-label">Status</span><span>{{ 'Encrypted at rest' if security.encryption_enabled else 'Plaintext fallback' }}</span></div>
-        {% if security.guidance %}<p class="muted compact">{{ security.guidance }}</p>{% endif %}
-      </div>
-    {% endif %}
     {% if profiles %}
-      <div class="list">
+      <div class="connection-card-list">
         {% for p in profiles %}
-          <div class="list-item">
-            <h3>{{ p.name }} {% if not p.enabled %}<span class="muted">(disabled)</span>{% endif %}</h3>
-            <p>{{ p.server_url }} — {{ p.username }}</p>
-            <p>Group: {{ p.group_name or 'Ungrouped' }}{% if p.tags %} — Tags: {{ p.tags|join(', ') }}{% endif %}</p>
-            <p>Last success: {{ p.last_successful_connect_at or 'never' }} &nbsp; Last error: {{ p.last_error or 'none' }}</p>
-            <div class="button-row">
-              <a class="button small" href="{{ url_for('edit_connection', profile_id=p.id) }}">Edit</a>
-              <a class="button small secondary" href="{{ url_for('profile_export_connection', profile_id=p.id) }}">Export Connection</a>
-              <a class="button small secondary" href="{{ url_for('profile_backup_export', profile_id=p.id) }}">Backup ZIP</a>
-              <form method="post" action="{{ url_for('test_connection', profile_id=p.id) }}" style="display:inline">
-                <button class="button small">Test</button>
-              </form>
-              <form method="post" action="{{ url_for('refresh_addressbooks', profile_id=p.id) }}" style="display:inline">
-                <button class="button small">Refresh Address Books</button>
-              </form>
-              <form method="post" action="{{ url_for('delete_connection', profile_id=p.id) }}" style="display:inline" onsubmit="return confirm('Delete this connection?');">
-                <button class="button small secondary">Delete</button>
-              </form>
+          <article class="book-card connection-card">
+            <div class="connection-card-main">
+              <h2>{{ p.name }} {% if not p.enabled %}<span class="muted">(disabled)</span>{% endif %}</h2>
+              <p class="compact">{{ p.server_url }}</p>
+              <p class="muted compact">
+                {% if p.last_error %}Unhealthy{% else %}Healthy{% endif %} · {{ p.books|length if p.books else 0 }} books
+              </p>
             </div>
-            <form class="inline-action-form addressbook-create-form" method="post" action="{{ url_for('create_addressbook', profile_id=p.id) }}">
-              <label>
-                New address book
-                <input type="text" name="display_name" placeholder="Friends, Work, Vendors..." required />
-              </label>
-              <button class="button small" type="submit">Create</button>
-            </form>
-            {% if p.books %}
-              <ul class="managed-book-list">
-                {% for b in p.books %}
-                  <li>
-                    <div class="managed-book-main">
-                      <strong>{{ b.display_name }}</strong>
-                      <span class="muted">{{ b.path }}</span>
-                      <span class="muted">Contacts: {{ b.contact_count if b.contact_count is not none else 'unknown' }}</span>
-                      <span class="muted">Last modified: {{ b.last_seen_at or 'unknown' }}</span>
-                    </div>
-                    <form class="inline-action-form" method="post" action="{{ url_for('rename_addressbook', profile_id=p.id, collection_path=b.path) }}">
-                      <input type="text" name="display_name" value="{{ b.display_name }}" required />
-                      <button class="button small" type="submit">Rename</button>
-                    </form>
-                    <form method="post" action="{{ url_for('delete_addressbook', profile_id=p.id, collection_path=b.path) }}" onsubmit="return confirm('Delete this address book and all contacts inside it?');">
-                      <button class="button small secondary" type="submit">Delete Book</button>
-                    </form>
-                  </li>
-                {% endfor %}
-              </ul>
-            {% endif %}
-          </div>
+            <div class="connection-card-actions">
+              <a class="button small" href="{{ url_for('connection_detail', profile_id=p.id) }}">Open</a>
+              <details class="row-menu">
+                <summary aria-label="Open connection actions">⋯</summary>
+                <div class="row-menu-panel">
+                  <a href="{{ url_for('edit_connection', profile_id=p.id) }}">Edit</a>
+                  <form method="post" action="{{ url_for('test_connection', profile_id=p.id) }}">
+                    <input type="hidden" name="next" value="{{ url_for('connections') }}" />
+                    <button type="submit">Test</button>
+                  </form>
+                  <form method="post" action="{{ url_for('refresh_addressbooks', profile_id=p.id) }}">
+                    <input type="hidden" name="next" value="{{ url_for('connections') }}" />
+                    <button type="submit">Refresh Address Books</button>
+                  </form>
+                  <a href="{{ url_for('profile_export_connection', profile_id=p.id) }}">Export Connection</a>
+                  <a href="{{ url_for('profile_backup_export', profile_id=p.id) }}">Backup ZIP</a>
+                  <form method="post" action="{{ url_for('delete_connection', profile_id=p.id) }}" onsubmit="return confirm('Delete this connection?');">
+                    <input type="hidden" name="next" value="{{ url_for('connections') }}" />
+                    <button type="submit">Delete</button>
+                  </form>
+                </div>
+              </details>
+            </div>
+          </article>
         {% endfor %}
       </div>
     {% else %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h1>Credential Security</h1>
+    <div class="summary-card">
+      <div class="field-row"><span class="field-label">Encryption library</span><span>{{ 'Ready' if security.fernet_available else 'Missing (install cryptography)' }}</span></div>
+      <div class="field-row"><span class="field-label">Profile secret</span><span>{{ 'Configured' if security.secret_configured else 'Not configured' }}</span></div>
+      <div class="field-row"><span class="field-label">Status</span><span>{{ 'Encrypted at rest' if security.encryption_enabled else 'Plaintext fallback' }}</span></div>
+    </div>
+    {% if security.guidance %}
+      <p class="muted">{{ security.guidance }}</p>
+    {% endif %}
+  </div>
+{% endblock %}
