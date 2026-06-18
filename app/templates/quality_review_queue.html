@@ -134,30 +134,42 @@
         {% endif %}
 
         {% if not is_closed %}
-          <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
-            <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
-            <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
-            <input type="hidden" name="current_status" value="{{ entry.status }}" />
-            <label>
-              Update workflow stage
-              <select name="status" required>
-                <option value="" selected>Select next stage</option>
-                {% for status_key, status_label in status_options.items() %}
-                  {% if status_key != entry.status %}
-                    <option value="{{ status_key }}">{{ status_label }}</option>
-                  {% endif %}
-                {% endfor %}
-              </select>
-            </label>
-            <button class="button small secondary" type="submit">Save Stage</button>
-          </form>
+          <div class="button-row compact">
+            {% if entry.action != 'recommend_merge' and entry.status != 'in_review' %}
+              <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
+                <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
+                <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+                <input type="hidden" name="current_status" value="{{ entry.status }}" />
+                <input type="hidden" name="status" value="in_review" />
+                <button class="button small secondary" type="submit">Start Review</button>
+              </form>
+            {% endif %}
+            {% if entry.action != 'recommend_merge' and entry.status != 'resolved' %}
+              <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
+                <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
+                <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+                <input type="hidden" name="current_status" value="{{ entry.status }}" />
+                <input type="hidden" name="status" value="resolved" />
+                <button class="button small" type="submit">Mark Mitigated</button>
+              </form>
+            {% endif %}
+            {% if entry.status != 'dismissed' %}
+              <form method="post" action="{{ url_for('quality_review_queue_status') }}" class="inline-action-form">
+                <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}" />
+                <input type="hidden" name="queue_key" value="{{ entry.queue_key }}" />
+                <input type="hidden" name="current_status" value="{{ entry.status }}" />
+                <input type="hidden" name="status" value="dismissed" />
+                <button class="button small ghost-danger" type="submit">Dismiss</button>
+              </form>
+            {% endif %}
+          </div>
         {% endif %}
       </article>
     {% endmacro %}
 
     {% if entries %}
-      <section class="profile-block">
-        <h2>Active Queue ({{ active_entries|length }})</h2>
+      <details class="profile-block queue-section" open>
+        <summary>Active Queue ({{ active_entries|length }})</summary>
         <p class="muted compact">Items waiting or currently under review.</p>
         {% if active_entries %}
           <div class="event-list">
@@ -168,10 +180,10 @@
         {% else %}
           <p>No active queue items for this filter.</p>
         {% endif %}
-      </section>
+      </details>
 
-      <section class="profile-block">
-        <h2>Closed Items ({{ closed_entries|length }})</h2>
+      <details class="profile-block queue-section">
+        <summary>Closed Items ({{ closed_entries|length }})</summary>
         <p class="muted compact">Resolved or dismissed findings are kept here for audit history.</p>
         {% if closed_entries %}
           <div class="event-list">
@@ -182,7 +194,7 @@
         {% else %}
           <p>No closed queue items for this filter.</p>
         {% endif %}
-      </section>
+      </details>
     {% else %}
       <p>No queued quality actions match this filter.</p>
     {% endif %}

@@ -315,6 +315,34 @@ textarea {
   margin-top: 1.5rem;
 }
 
+.queue-section > summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.25rem;
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 800;
+  color: #0b1f44;
+}
+
+.queue-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.queue-section > summary::before {
+  content: "▾";
+  margin-right: 0.45rem;
+  font-size: 0.95rem;
+  color: #64748b;
+}
+
+.queue-section:not([open]) > summary::before {
+  content: "▸";
+}
+
 .profile-meta,
 .book-meta {
   display: grid;
@@ -1697,6 +1725,15 @@ textarea {
 
   .data-table td[data-label="Actions"]::before {
     flex: 0 0 100%;
+  }
+
+  .global-contacts-table {
+    display: none !important;
+  }
+
+  .queue-section > summary {
+    font-size: 1.9rem;
+    min-height: 2.25rem;
   }
 
   .table-toolbar {
