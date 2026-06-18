@@ -19,11 +19,12 @@
         {% for p in profiles %}
           <article class="book-card connection-card">
             <div class="connection-card-main">
-              <h2>{{ p.name }} {% if not p.enabled %}<span class="muted">(disabled)</span>{% endif %}</h2>
+              <div class="connection-name-row">
+                <h2>{{ p.name }} {% if not p.enabled %}<span class="muted">(disabled)</span>{% endif %}</h2>
+                <span class="connection-health-inline" title="{{ p.health_label }}">{{ p.health_icon }}</span>
+              </div>
               <p class="compact">{{ p.server_url }}</p>
-              <p class="muted compact">
-                {% if p.last_error %}Unhealthy{% else %}Healthy{% endif %} · {{ p.books|length if p.books else 0 }} books
-              </p>
+              <p class="muted compact">{{ p.book_count }} books · {{ p.contact_count }} contacts</p>
             </div>
             <div class="connection-card-actions">
               <a class="button small" href="{{ url_for('connection_detail', profile_id=p.id) }}">Open</a>

@@ -779,9 +779,26 @@ def connections():
     profiles = credential_store.get_profiles()
     for p in profiles:
         try:
-            p["books"] = credential_store.get_cached_address_books(p["id"]) or []
+            books = credential_store.get_cached_address_books(p["id"]) or []
+            normalized_books = [normalize_book_for_template(book) for book in books]
+            p["books"] = normalized_books
+            p["book_count"] = len(normalized_books)
+            p["contact_count"] = sum((book.get("contact_count") or 0) for book in normalized_books)
+            if p.get("last_error"):
+                p["health_icon"] = "🔴"
+                p["health_label"] = "Unhealthy"
+            elif p.get("last_successful_connect_at"):
+                p["health_icon"] = "🟢"
+                p["health_label"] = "Healthy"
+            else:
+                p["health_icon"] = "🟡"
+                p["health_label"] = "Not tested yet"
         except Exception:
             p["books"] = []
+            p["book_count"] = 0
+            p["contact_count"] = 0
+            p["health_icon"] = "🟡"
+            p["health_label"] = "Unknown"
     return render_template(
         "connections.html",
         title="Connections",

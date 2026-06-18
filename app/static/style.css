@@ -177,6 +177,18 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.connection-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.connection-health-inline {
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .connection-card-main p {
   margin: 0.15rem 0;
   overflow-wrap: anywhere;
