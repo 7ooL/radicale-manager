@@ -112,9 +112,9 @@ Goal: become a contact quality and migration platform.
 - [x] Detect missing name
 - [x] Detect missing email
 - [x] Detect missing phone
-- [ ] Detect empty contacts
-- [ ] Detect deprecated fields
-- [ ] Show warnings and recommendations without auto-changing contacts
+- [x] Detect empty contacts
+- [x] Detect deprecated fields
+- [x] Show warnings and recommendations without auto-changing contacts
 
 ### Duplicate Detection
 

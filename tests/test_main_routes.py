@@ -339,6 +339,7 @@ class MainRoutesTest(unittest.TestCase):
         self.assertIn(b"Global Quality Scan", response.data)
         self.assertIn(b"Possible Duplicates", response.data)
         self.assertIn(b"Missing Fields", response.data)
+        self.assertIn(b"Warnings & Recommendations", response.data)
         self.assertIn(b"Average Health Score", response.data)
         self.assertIn(b"Low Health Contacts", response.data)
         self.assertIn(b"Demo / Source", response.data)
@@ -360,6 +361,30 @@ class MainRoutesTest(unittest.TestCase):
         self.assertEqual(all_scopes.status_code, 200)
         self.assertIn(b"2 contacts scanned across selected connections and books.", scoped.data)
         self.assertIn(b"3 contacts scanned across selected connections and books.", all_scopes.data)
+
+    def test_global_quality_scan_detects_empty_and_deprecated_field_warnings(self):
+        FakeRadicaleClient.contacts["demo/source/contact-empty.vcf"] = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-empty\n"
+            "END:VCARD\n"
+        )
+        FakeRadicaleClient.contacts["demo/source/contact-deprecated.vcf"] = (
+            "BEGIN:VCARD\n"
+            "VERSION:3.0\n"
+            "UID:contact-deprecated\n"
+            "FN:Legacy Contact\n"
+            "LABEL:Old Label Value\n"
+            "END:VCARD\n"
+        )
+
+        response = self.client.get("/contacts/quality")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Empty contact", response.data)
+        self.assertIn(b"Deprecated fields", response.data)
+        self.assertIn(b"LABEL", response.data)
+        self.assertIn(b"Recommendation:", response.data)
 
     def test_contact_transfer_page_lists_destinations(self):
         response = self.client.get(
@@ -410,6 +435,7 @@ class MainRoutesTest(unittest.TestCase):
         quality_response = self.client.get(f"/profiles/{self.profile_id}/books/demo/source/contacts/quality")
         self.assertEqual(quality_response.status_code, 200)
         self.assertIn(b"Average Health Score", quality_response.data)
+        self.assertIn(b"Warnings & Recommendations", quality_response.data)
         self.assertIn(b"Lowest Health Contacts", quality_response.data)
 
         quality_events = self.store.get_recent_events(limit=10, actions=["quality_scan"])

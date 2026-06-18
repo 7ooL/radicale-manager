@@ -28,6 +28,10 @@
         <h2>Low Health Contacts</h2>
         <p>{{ report.score.low_health }}</p>
       </div>
+      <div class="summary-card">
+        <h2>Warnings & Recommendations</h2>
+        <p>{{ report.warnings|length }}</p>
+      </div>
     </div>
 
     <section class="summary-card full-width">
@@ -65,11 +69,30 @@
               <h3>{{ issue.display }}</h3>
               <p><span class="quality-score-chip tone-{{ issue.quality_tone }}">{{ issue.quality_score }} {{ issue.quality_label }}</span></p>
               <p>Missing {{ issue.missing|join(', ') }}</p>
+              <p class="muted compact">Recommendation: {{ issue.recommendation }}</p>
             </article>
           {% endfor %}
         </div>
       {% else %}
         <p>No missing name, email, or phone issues found.</p>
+      {% endif %}
+    </section>
+
+    <section class="summary-card full-width">
+      <h2>Warnings & Recommendations</h2>
+      {% if report.warnings %}
+        <div class="quality-list">
+          {% for warning in report.warnings %}
+            <article class="quality-item">
+              <h3>{{ warning.display }}</h3>
+              <p><span class="quality-score-chip tone-{{ warning.quality_tone }}">{{ warning.quality_score }} {{ warning.quality_label }}</span></p>
+              <p><strong>{{ warning.type }}</strong>: {{ warning.detail }}</p>
+              <p class="muted compact">Recommendation: {{ warning.recommendation }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No empty-contact or deprecated-field warnings found.</p>
       {% endif %}
     </section>
 

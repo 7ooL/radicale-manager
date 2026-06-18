@@ -494,7 +494,94 @@ def normalize_phone_key(value):
     return re.sub(r"\D+", "", value or "")
 
 
-def assess_contact_health(contact):
+DEPRECATED_VCARD_FIELDS = {
+    "AGENT": "AGENT is deprecated in modern vCard versions. Store assistant/contact links using supported custom fields.",
+    "CLASS": "CLASS is deprecated. Remove it and use system-level access controls instead.",
+    "LABEL": "LABEL is deprecated. Keep address display text in ADR components or NOTE.",
+    "MAILER": "MAILER is deprecated. Remove it because client apps can infer source without this property.",
+}
+
+
+def _unfold_vcard_lines(raw_text):
+    lines = []
+    for line in (raw_text or "").replace("\r\n", "\n").split("\n"):
+        if not line:
+            continue
+        if line.startswith((" ", "\t")) and lines:
+            lines[-1] += line[1:]
+        else:
+            lines.append(line)
+    return lines
+
+
+def _extract_vcard_property_names(raw_text):
+    names = []
+    for line in _unfold_vcard_lines(raw_text):
+        if ":" not in line:
+            continue
+        names.append(line.split(":", 1)[0].split(";", 1)[0].strip().upper())
+    return names
+
+
+def analyze_contact_quality_warnings(contact):
+    raw_property_names = _extract_vcard_property_names(contact.get("raw") or "")
+    deprecated_fields = sorted(
+        {
+            property_name
+            for property_name in raw_property_names
+            if property_name in DEPRECATED_VCARD_FIELDS
+        }
+    )
+    empty_contact = not any(
+        [
+            (contact.get("full_name") or "").strip(),
+            (contact.get("first_name") or "").strip(),
+            (contact.get("last_name") or "").strip(),
+            (contact.get("nickname") or "").strip(),
+            (contact.get("organization") or "").strip(),
+            (contact.get("job_title") or "").strip(),
+            (contact.get("birthday") or "").strip(),
+            (contact.get("address") or "").strip(),
+            (contact.get("note") or "").strip(),
+            contact.get("emails") or [],
+            contact.get("phones") or [],
+            contact.get("urls") or [],
+            contact.get("categories") or [],
+        ]
+    )
+
+    warnings = []
+    recommendations = []
+    if empty_contact:
+        recommendation = "Add a name and at least one contact method (email or phone), or remove this placeholder entry."
+        warnings.append(
+            {
+                "type": "Empty contact",
+                "detail": "No meaningful profile fields were found.",
+                "recommendation": recommendation,
+            }
+        )
+        recommendations.append(recommendation)
+    if deprecated_fields:
+        recommendation = "Replace deprecated fields with modern equivalents and re-save the contact."
+        warnings.append(
+            {
+                "type": "Deprecated fields",
+                "detail": ", ".join(deprecated_fields),
+                "recommendation": recommendation,
+            }
+        )
+        recommendations.append(recommendation)
+    return {
+        "empty_contact": empty_contact,
+        "deprecated_fields": deprecated_fields,
+        "warnings": warnings,
+        "recommendations": recommendations,
+    }
+
+
+def assess_contact_health(contact, analysis=None):
+    analysis = analysis or analyze_contact_quality_warnings(contact)
     missing = []
     emails = contact.get("emails") or []
     phones = contact.get("phones") or []
@@ -514,6 +601,10 @@ def assess_contact_health(contact):
         score -= 25
     if not emails and not phones:
         score -= 10
+    if analysis.get("empty_contact"):
+        score -= 35
+    if analysis.get("deprecated_fields"):
+        score -= min(20, 10 * len(analysis["deprecated_fields"]))
     score = max(0, min(100, score))
 
     if score >= 90:
@@ -534,21 +625,28 @@ def assess_contact_health(contact):
         "label": label,
         "tone": tone,
         "missing": missing,
+        "empty_contact": analysis.get("empty_contact", False),
+        "deprecated_fields": analysis.get("deprecated_fields", []),
+        "warnings": analysis.get("warnings", []),
+        "recommendations": analysis.get("recommendations", []),
     }
 
 
 def build_duplicate_report(contacts):
     checks = {"email": {}, "phone": {}, "name": {}}
     issues = []
+    warnings = []
     score_sum = 0
     score_count = 0
     low_health_count = 0
+    warning_contact_count = 0
     score_buckets = {"excellent": 0, "good": 0, "fair": 0, "risk": 0}
     scored_contacts = []
 
     for contact in contacts:
         display = contact.get("full_name") or contact.get("filename") or "Unnamed contact"
-        health = assess_contact_health(contact)
+        analysis = analyze_contact_quality_warnings(contact)
+        health = assess_contact_health(contact, analysis)
         entry = {
             "display": display,
             "filename": contact.get("filename"),
@@ -560,12 +658,17 @@ def build_duplicate_report(contacts):
             "quality_score": health["score"],
             "quality_label": health["label"],
             "quality_tone": health["tone"],
+            "empty_contact": health["empty_contact"],
+            "deprecated_fields": health["deprecated_fields"],
+            "recommendations": health["recommendations"],
         }
         score_sum += health["score"]
         score_count += 1
         score_buckets[health["tone"]] = score_buckets.get(health["tone"], 0) + 1
         if health["score"] < 75:
             low_health_count += 1
+        if health["warnings"]:
+            warning_contact_count += 1
         scored_contacts.append(entry)
         for email in contact.get("emails") or []:
             key = normalize_duplicate_key(email)
@@ -581,7 +684,12 @@ def build_duplicate_report(contacts):
 
         missing = health["missing"]
         if missing:
-            issues.append({**entry, "missing": missing})
+            missing_recommendation = (
+                f"Add missing {' and '.join(missing)} values to improve contact completeness."
+            )
+            issues.append({**entry, "missing": missing, "recommendation": missing_recommendation})
+        for warning in health["warnings"]:
+            warnings.append({**entry, **warning})
 
     duplicate_groups = []
     for match_type, values in checks.items():
@@ -602,10 +710,12 @@ def build_duplicate_report(contacts):
     return {
         "duplicates": duplicate_groups,
         "issues": issues,
+        "warnings": warnings,
         "score": {
             "average": average_score,
             "contacts_scored": score_count,
             "low_health": low_health_count,
+            "contacts_with_warnings": warning_contact_count,
             "excellent": score_buckets.get("excellent", 0),
             "good": score_buckets.get("good", 0),
             "fair": score_buckets.get("fair", 0),
@@ -1787,6 +1897,7 @@ def global_contact_quality():
             "contacts_scanned": len(contacts),
             "duplicate_groups": len(report.get("duplicates") or []),
             "issues": len(report.get("issues") or []),
+            "warnings": len(report.get("warnings") or []),
         },
     )
     return render_template(
@@ -2310,6 +2421,7 @@ def profile_contact_quality(profile_id, collection_path):
                 "contacts_scanned": len(contacts),
                 "duplicate_groups": len(report.get("duplicates") or []),
                 "issues": len(report.get("issues") or []),
+                "warnings": len(report.get("warnings") or []),
             },
         )
         return render_template(
